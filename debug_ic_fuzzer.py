@@ -42,6 +42,7 @@ class Project(Config):
     end_commit: str
     direction: Literal["forward", "reverse"] = "forward"
     task: str
+    gradle_args: list[str] = Field(default_factory=list)
 
 
 class Projects(Config):
@@ -63,7 +64,7 @@ def git(repo: Path, *args: str) -> str:
 
 def commits(repo: Path, config: Project) -> list[str]:
     # 先确定含两端的主线区间，reverse 只改变执行顺序。
-    history = git(repo, "rev-list", "--first-parent", "--reverse", config.branch).splitlines()
+    history = git(repo, "rev-list", "--first-parent", "--reverse", f"refs/remotes/origin/{config.branch}").splitlines()
     start = git(repo, "rev-parse", "--verify", config.start_commit + "^{commit}")
     end = git(repo, "rev-parse", "--verify", config.end_commit + "^{commit}")
     if start not in history or end not in history or history.index(start) > history.index(end):
@@ -220,7 +221,7 @@ class Variant:
                             "IC_EVAL_HOME": str(self.home), "IC_EVAL_STEP": str(step)}
         # 禁用配置缓存，确保每轮注入新的采集目录。
         # 普通格式的详细日志用于提取真实 konanc 参数；运行资源设置沿用项目默认值。
-        command = [str(self.checkout / "gradlew"), project.task,
+        command = [str(self.checkout / "gradlew"), project.task, *project.gradle_args,
                    "--no-configuration-cache", "--console=plain", "--info",
                    "-I", str(init_script()), "-Pkotlin.incremental.native=true",
                    "-Pkotlin.internal.compiler.arguments.log.level=info", f"-Pkotlin.native.home={self.home}"]

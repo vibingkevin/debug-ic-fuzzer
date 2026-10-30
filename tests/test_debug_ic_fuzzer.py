@@ -69,6 +69,9 @@ def test_configs_reject_unexpected_and_no_project_compiler_dependency():
     c = Compilers.model_validate({'compilers': {'baseline': {'kotlin_version': '2.4.21', 'kotlin_native_home': 'b'},
                                                'sut': {'kotlin_version': '2.4.21', 'kotlin_native_home': 's'}}})
     assert c.compilers['sut'].kotlin_native_home == Path('s')
+    assert Project(repository='r', branch='main', start_commit='a', end_commit='b', task=':t').gradle_args == []
+    with pytest.raises(ValidationError):
+        Project(repository='r', branch='main', start_commit='a', end_commit='b', task=':t', gradle_args='-Pios=true')
 
 
 def test_commit_range_and_reverse(tmp_path):
@@ -83,7 +86,9 @@ def test_commit_range_and_reverse(tmp_path):
         command('add', 'file')
         command('commit', '-m', value)
         revisions.append(command('rev-parse', 'HEAD'))
-    p = Project(repository='r', branch='main', start_commit=revisions[0], end_commit=revisions[2], task=':t')
+    # clone 后非默认分支通常只有远端引用，没有同名本地分支。
+    command('update-ref', 'refs/remotes/origin/topic', revisions[2])
+    p = Project(repository='r', branch='topic', start_commit=revisions[0], end_commit=revisions[2], task=':t')
     assert commits(tmp_path, p) == revisions
     p.direction = 'reverse'
     assert commits(tmp_path, p) == revisions[::-1]
@@ -226,8 +231,10 @@ def test_build_collects_rebuilds_and_cache_boundary(tmp_path, monkeypatch, escap
     monkeypatch.setattr('debug_ic_fuzzer.subprocess.Popen', Process)
     variant = Variant('baseline', checkout, tmp_path / 'home',
                       Compiler(kotlin_version='2.4.21', kotlin_native_home='home'), Store(tmp_path / 'store'))
-    project = Project(repository='r', branch='main', start_commit='a', end_commit='b', task=':link')
+    project = Project(repository='r', branch='main', start_commit='a', end_commit='b', task=':link',
+                      gradle_args=['-Pani.enable.ios=true', '-Pexample=value with spaces'])
     first = variant.build(project, tmp_path / 'first', False)
+    assert invocations[0][1:4] == [project.task, *project.gradle_args]
     if escape:
         assert first['status'] == 'INVALID'
         assert f'CACHE_OUT_OF_SCOPE: {archive}' in first['errors']

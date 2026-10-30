@@ -4,6 +4,10 @@ import groovy.json.JsonOutput
 def version = System.getenv('IC_EVAL_KOTLIN')
 def evidence = new File(System.getenv('IC_EVAL_STEP'))
 gradle.settingsEvaluated { settings ->
+    // 同步约定插件使用的版本目录，避免父项目加载新插件后子项目仍请求旧版本。
+    settings.dependencyResolutionManagement.versionCatalogs.configureEach { catalog ->
+        catalog.version('kotlin', version)
+    }
     settings.pluginManagement.resolutionStrategy.eachPlugin {
         if (requested.id.id.startsWith('org.jetbrains.kotlin.')) useVersion(version)
     }
@@ -26,7 +30,9 @@ gradle.projectsEvaluated {
                 }
             }
             target.binaries.configureEach { binary ->
-                def mapping = "-Xdebug-prefix-map=${root}=/project"
+                // 第三方单库 cache 的 DWARF 会写入编译器目录，发行包解压路径也需要映射。
+                def compilerRoot = new File(System.getenv('IC_EVAL_HOME')).canonicalPath
+                def mapping = "-Xdebug-prefix-map=${root}=/project,${compilerRoot}=/compiler"
                 binary.freeCompilerArgs += mapping
                 binary.freeCompilerArgs += "-Xoverride-konan-properties=additionalCacheFlags.${target.konanTarget.name}=${mapping}"
             }

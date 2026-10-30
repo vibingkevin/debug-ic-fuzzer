@@ -12,10 +12,12 @@ python3 -m venv .venv
 
 先修改两份独立的 YAML，字段说明就在配置旁。运行目录必须不存在；结果见 `project-*/results/summary.json`，文件内容按 MD5 去重保存。
 
-[执行流程](docs/execution-flow.html)（下载后用浏览器打开） · [编译器配置](docs/compilers.yaml) · [项目配置](docs/projects.yaml)
+[执行流程](docs/execution-flow.html)（下载后用浏览器打开） · [编译器配置](docs/compilers.yaml) · [项目配置](docs/projects.yaml) · [Animeko iOS 配置](docs/animeko.yaml)
 
 ```sh
 .venv/bin/python -m pytest
 ```
 
-已验证 Linux x64、Kotlin 2.4.21 原版 A/A 的正逆回放和 clean 一致性；未验证实际 digest 优化版。缓存越界会记录后停止，不适配自定义 autoCacheDir。
+已验证 Kotlin 2.4.21 原版 A/A：Linux x64 正逆回放，以及 Animeko iOS 静态 framework 的两提交正序回放，均通过增量与 clean 对照；未验证实际 digest 优化版。缓存越界会记录后停止，不适配自定义 autoCacheDir。
+
+Animeko 配置选 `utils:platform` 的 iOS Simulator ARM64 静态 framework，通过外部 init 脚本切换静态产物，不改业务源码。iOS 测试可执行文件仍会因链接器写入绝对路径、临时对象时间戳而出现原始 MD5 差异，暂未解决。

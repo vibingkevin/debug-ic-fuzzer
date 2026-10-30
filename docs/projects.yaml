@@ -5,3 +5,4 @@ projects:
     end_commit: "1233b13"
     direction: forward                    # forward：起→止；reverse：止→起。
     task: ":app:linkDebugTestLinuxX64"      # 自动获取产物和 IC 路径。
+    # gradle_args: ["-Pfeature=true"]      # 可选；原样传给 Gradle，默认不加参数。
