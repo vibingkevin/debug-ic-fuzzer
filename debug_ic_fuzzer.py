@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from contextlib import ExitStack
 import hashlib
 import json
 import os
@@ -122,8 +123,7 @@ def option(args: list[str], *names: str) -> str | None:
 
 
 def absolute(value: str, cwd: Path) -> Path:
-    path = Path(value)
-    return (cwd / path).resolve() if not path.is_absolute() else path.resolve()
+    return (cwd / value).resolve()
 
 
 def within(path: Path, roots: list[Path]) -> bool:
@@ -153,19 +153,14 @@ class Capture:
             self.field, self.items = line.split(" = ")[0], []
         elif self.field and line == "]":
             if self.field == "Arguments":
-                files = {}
+                self.calls.append(dict(argv=self.items, cwd=str(self.cwd), launcher=list(self.context), argfiles={}))
+            if self.calls:
+                prefixes = ("@", "-Xexternal-dependencies=") if self.field == "Arguments" else ("@",)
                 for arg in self.items:
-                    if arg.startswith("-Xexternal-dependencies=") or arg.startswith("@"):
-                        value = arg.split("=", 1)[1] if "=" in arg else arg[1:]
-                        path = absolute(value, self.cwd)
+                    prefix = next((p for p in prefixes if arg.startswith(p)), None)
+                    if prefix is not None:
+                        path = absolute(arg[len(prefix):], self.cwd)
                         if path.is_file():
-                            files[str(path)] = argfile_record(path)
-                self.calls.append(dict(argv=self.items, cwd=str(self.cwd), launcher=list(self.context), argfiles=files))
-            elif self.calls:
-                for arg in self.items:
-                    if arg.startswith("@"):
-                        path = absolute(arg[1:], self.cwd)
-                        if path.exists():
                             self.calls[-1]["argfiles"][str(path)] = argfile_record(path)
             self.field = None
         elif self.field:
@@ -178,14 +173,13 @@ class Capture:
         write_json(self.step / "commands.json", self.calls)
 
 
-def prepare_home(source: Path, temporary: list[tempfile.TemporaryDirectory]) -> Path:
+def prepare_home(source: Path, temporary: ExitStack) -> Path:
     if source.is_file() and (source.name.endswith(".tgz") or source.name.endswith(".tar.gz")):
         # 即使两版配置同一个发行包，也各自解压，防止共享可写缓存。
-        temp = tempfile.TemporaryDirectory(prefix="kn-ic-eval-", dir="/tmp")
-        temporary.append(temp)
+        folder = Path(temporary.enter_context(tempfile.TemporaryDirectory(prefix="kn-ic-eval-", dir="/tmp")))
         with tarfile.open(source) as archive:
-            archive.extractall(temp.name, filter="data")
-        candidates = list(Path(temp.name).glob("*/bin/konanc")) + list(Path(temp.name).glob("bin/konanc"))
+            archive.extractall(folder, filter="data")
+        candidates = list(folder.glob("*/bin/konanc")) + list(folder.glob("bin/konanc"))
         if len(candidates) != 1:
             raise Invalid(f"发行包中必须有唯一 bin/konanc：{source}")
         return candidates[0].parent.parent.resolve()
@@ -197,6 +191,10 @@ def prepare_home(source: Path, temporary: list[tempfile.TemporaryDirectory]) -> 
 def init_script() -> Path:
     local = Path(__file__).with_name("capture.init.gradle")
     return local if local.exists() else Path(sys.prefix) / "share/debug-ic-fuzzer/capture.init.gradle"
+
+
+def files_under(path: Path):
+    return [path] if path.is_file() else sorted(p for p in path.rglob("*") if p.is_file())
 
 
 class Variant:
@@ -239,81 +237,67 @@ class Variant:
                     capture.line(line)
                 code = process.wait()
         capture.finish()
-        result = dict(variant=self.name, clean=clean, exit_code=code, seconds=time.monotonic() - started,
-                      status="BUILD_FAIL" if code else "PASS", rebuilt=[], unchanged_rebuilt=None, retained=[],
-                      files={}, errors=[], calls=capture.calls)
+        seconds = time.monotonic() - started
+        errors, rebuilt, inputs = [], set(), {}
+        links = 0
         for call in capture.calls:
-            if option(call["argv"], "-produce", "-p") == "library":
-                output = option(call["argv"], "-output", "-o")
-                if output:
-                    parent = absolute(output, self.checkout).parent
-                    if parent.is_relative_to(self.checkout) and parent != self.checkout:
-                        self.klib_roots.add(parent)
-        links = [c for c in capture.calls if option(c["argv"], "-Xic-cache-dir")]
-        if not links and code == 0:
-            result["errors"].append("没有实际执行启用 IC 的 Native 链接")
-        for call in links:
             args = call["argv"]
-            ic = absolute(option(args, "-Xic-cache-dir"), self.checkout)
+            inputs.update({str(p): self.store.record(p)
+                for flag, value in zip(args, args[1:]) if flag in {"-library", "-l", "-include", "-native-library"}
+                for p in files_under(absolute(value, self.checkout))})
             output = option(args, "-output", "-o")
+            parent = absolute(output, self.checkout).parent if output else None
+            local_output = parent is not None and parent != self.checkout and parent.is_relative_to(self.checkout)
+            if option(args, "-produce", "-p") == "library" and local_output:
+                self.klib_roots.add(parent)
+            ic = option(args, "-Xic-cache-dir")
+            if not ic:
+                continue
+            links += 1
+            ic = absolute(ic, self.checkout)
             if "-opt" in args or "-g" not in args or "-Xenable-incremental-compilation" not in args:
-                result["errors"].append("不是 Debug IC 调用")
+                errors.append("不是 Debug IC 调用")
             if not ic.is_relative_to(self.checkout) or ic == self.checkout:
-                result["errors"].append(f"工程 IC 根越界：{ic}")
+                errors.append(f"工程 IC 根越界：{ic}")
                 continue
             self.ic_roots.add(ic)
-            if output:
-                output = absolute(output, self.checkout)
-                if output.parent.is_relative_to(self.checkout) and output.parent != self.checkout:
-                    self.output_roots.add(output.parent)
-                else:
-                    result["errors"].append(f"输出目录越界：{output}")
+            if local_output:
+                self.output_roots.add(parent)
             else:
-                result["errors"].append("缺少 -output/-o")
+                errors.append(f"输出目录越界：{absolute(output, self.checkout)}" if output else "缺少 -output/-o")
             dump = option(args, "-Xdump-built-caches-to")
             if dump and Path(dump).exists():
-                result["rebuilt"].extend(line for line in Path(dump).read_text().splitlines() if line.strip())
+                rebuilt.update(line for line in Path(dump).read_text().splitlines() if line.strip())
             elif code == 0:
-                result["errors"].append("编译成功但缺少重编清单")
+                errors.append("编译成功但缺少重编清单")
+        if not links and code == 0:
+            errors.append("没有实际执行启用 IC 的 Native 链接")
         # 只信任已登记的根；不能根据越界的输出反过来扩大跟踪范围。
         roots = [*self.ic_roots, self.home / "klib/cache"]
-        for path in sorted(set(result["rebuilt"])):
+        for path in sorted(rebuilt):
             if not within(Path(path), roots):
-                result["errors"].append(f"CACHE_OUT_OF_SCOPE: {path}")
+                errors.append(f"CACHE_OUT_OF_SCOPE: {path}")
             elif code == 0 and not Path(path).is_file():
-                result["errors"].append(f"重编清单中的归档不存在：{path}")
+                errors.append(f"重编清单中的归档不存在：{path}")
         for task_file in step.glob("*.task.json"):
             task = json.loads(task_file.read_text())
             if code == 0 and not Path(task["output"]).exists():
-                result["errors"].append(f"Native 输出不存在：{task['output']}")
-        result["rebuilt"] = sorted(set(result["rebuilt"]))
-        result["files"] = self.collect()
-        result["inputs"] = {}
-        for call in capture.calls:
-            args = call["argv"]
-            for i, arg in enumerate(args[:-1]):
-                if arg not in {"-library", "-l", "-include", "-native-library"}:
-                    continue
-                path = absolute(args[i + 1], self.checkout)
-                for source in ([path] if path.is_file() else sorted(path.rglob("*"))):
-                    if source.is_file():
-                        result["inputs"][str(source)] = self.store.record(source)
-        if result["errors"]:
-            result["status"] = "INVALID"
+                errors.append(f"Native 输出不存在：{task['output']}")
+        status = "INVALID" if errors else "BUILD_FAIL" if code else "PASS"
+        files = self.collect()
+        keys = {v["path"]: k for k, v in files.items()}
+        previous = self.previous if status == "PASS" else None
+        same = {k for k, v in files.items() if v["md5"] == (previous or {}).get(k, {}).get("md5")}
         # 重编事实取编译器清单；MD5 只回答重编后内容是否变化。
-        if result["status"] == "PASS" and self.previous is not None:
-            current = {v["path"]: (k, v) for k, v in result["files"].items()}
-            result["unchanged_rebuilt"] = [current[p][0] for p in result["rebuilt"] if p in current
-                and current[p][0] in self.previous and current[p][1]["md5"] == self.previous[current[p][0]]["md5"]]
-            result["retained"] = [k for k, v in result["files"].items() if k.endswith(".a")
-                and v["path"] not in result["rebuilt"] and k in self.previous and v["md5"] == self.previous[k]["md5"]]
-        result["rebuilt_keys"] = [k for k, v in result["files"].items() if v["path"] in result["rebuilt"]]
-        self.previous = result["files"] if result["status"] == "PASS" else None
-        result["evidence"] = {}
-        for path in list(step.iterdir()):
-            if path.is_file():
-                result["evidence"][path.name] = self.store.record(path, save=True)
-                path.unlink()
+        result = dict(variant=self.name, clean=clean, exit_code=code, seconds=seconds,
+            status=status, rebuilt=sorted(rebuilt), errors=errors, calls=capture.calls, files=files, inputs=inputs,
+            rebuilt_keys=[k for k, v in files.items() if v["path"] in rebuilt],
+            unchanged_rebuilt=[keys[p] for p in sorted(rebuilt) if keys.get(p) in same] if previous is not None else None,
+            retained=[k for k, v in files.items() if k in same and k.endswith(".a") and v["path"] not in rebuilt])
+        self.previous = files if status == "PASS" else None
+        result["evidence"] = {p.name: self.store.record(p, save=True) for p in step.iterdir() if p.is_file()}
+        for record in result["evidence"].values():
+            Path(record["path"]).unlink()
         write_json(step / "result.json", result)
         return result
 
@@ -323,21 +307,12 @@ class Variant:
         roots = [("project", self.checkout, [p for p in self.checkout.rglob("build") if p.is_dir() and ".git" not in p.parts]),
                  ("compiler-cache", self.home / "klib/cache", [self.home / "klib/cache"])]
         for label, base, scan in roots:
-            for root in scan:
-                if not root.exists():
-                    continue
-                for path in sorted(root.rglob("*")):
-                    if not path.is_file():
-                        continue
-                    key = f"{label}/{path.relative_to(base)}"
-                    if key in files:
-                        continue
-                    cache = label == "compiler-cache" or within(path, list(self.ic_roots))
-                    consumed = path.suffix in {".a", ".h"} or "ir" in path.parts or path.name in {"metadata.properties", "bitcode_deps"}
-                    compare = within(path, [*self.output_roots, *self.klib_roots]) or (cache and consumed)
-                    save = path.name in {"metadata.properties", "bitcode_deps"} or path.suffix in {".h", ".json", ".log", ".txt"} or "digest" in path.name
-                    files[key] = self.store.record(path, save)
-                    files[key]["compare"] = compare
+            for path in sorted({p for root in scan for p in files_under(root)}):
+                cache = label == "compiler-cache" or within(path, list(self.ic_roots))
+                consumed = path.suffix in {".a", ".h"} or "ir" in path.parts or path.name in {"metadata.properties", "bitcode_deps"}
+                compare = within(path, [*self.output_roots, *self.klib_roots]) or (cache and consumed)
+                save = path.name in {"metadata.properties", "bitcode_deps"} or path.suffix in {".h", ".json", ".log", ".txt"} or "digest" in path.name
+                files[f"{label}/{path.relative_to(base)}"] = self.store.record(path, save) | {"compare": compare}
         return files
 
     def preserve(self, result: dict):
@@ -369,7 +344,7 @@ def differences(left: dict, right: dict, store: Store) -> list[str]:
 
 
 def pair_status(results, store):
-    if any(r["status"] == "INVALID" for r in results):
+    if len(results) != 2 or any(r["status"] == "INVALID" for r in results):
         return "INVALID", []
     if any(r["status"] == "BUILD_FAIL" for r in results):
         return "BUILD_FAIL", []
@@ -378,71 +353,51 @@ def pair_status(results, store):
 
 
 def replay(project, variants, revisions, destination, store):
-    rows, any_failure = [], False
+    rows, failed = [], False
     for index, revision in enumerate(revisions):
         for variant in variants:
             git(variant.checkout, "checkout", "--detach", revision)
         folder = destination / f"{index:04d}-{revision[:12]}"
         row = dict(commit=revision, steps=[])
-        clean = index == 0
-        results = []
-        phase = "clean" if clean else "incremental"
-        for variant in variants:
-            result = variant.build(project, folder / phase / variant.name, clean)
-            results.append(result)
-            if result["status"] == "INVALID":
-                break
-        status, diff = pair_status(results, store) if len(results) == 2 else ("INVALID", [])
-        step = dict(phase=phase, status=status, diff=diff)
-        if len(results) == 2:
-            step["skipped_by_sut"] = sorted(set(results[0].get("rebuilt_keys", [])) & set(results[1].get("retained", [])))
-            step["recompilation"] = {v.name: {"rebuilt": len(r.get("rebuilt", [])),
-                "unchanged": r.get("unchanged_rebuilt")} for v, r in zip(variants, results)}
-        row["steps"].append(step)
-        print(f"{revision[:12]} {phase}: {status}", flush=True)
-        # clean 恢复后可继续，但不能抹掉已经观察到的异常。
-        any_failure |= status != "PASS"
-        if status != "PASS" or index == len(revisions) - 1:
-            for variant, result in zip(variants, results):
-                variant.preserve(result)
-                write_json(folder / phase / variant.name / "result.json", result)
-        if status == "INVALID" or (clean and status != "PASS"):
-            rows.append(row)
-            write_json(destination / "summary.json", rows)
-            return False
-        if not clean and (status != "PASS" or index == len(revisions) - 1):
-            clean_results = []
-            for variant in variants:
-                result = variant.build(project, folder / "clean" / variant.name, True)
-                clean_results.append(result)
-                if result["status"] == "INVALID":
-                    break
-            clean_status, clean_diff = pair_status(clean_results, store) if len(clean_results) == 2 else ("INVALID", [])
-            recovery = dict(phase="clean", status=clean_status, diff=clean_diff)
-            if len(clean_results) == 2:
-                recovery["incremental_vs_clean"] = {v.name: differences(old, new, store)
-                    for v, old, new in zip(variants, results, clean_results) if old["status"] == "PASS"}
-                changed_after_clean = any(recovery["incremental_vs_clean"].values())
-                any_failure |= changed_after_clean
-                if changed_after_clean:
-                    for variant, result in zip(variants, clean_results):
-                        variant.preserve(result)
-                        write_json(folder / "clean" / variant.name / "result.json", result)
-            row["steps"].append(recovery)
-            print(f"{revision[:12]} clean: {clean_status}", flush=True)
-            if clean_status != "PASS":
-                for variant, result in zip(variants, clean_results):
-                    variant.preserve(result)
-                    write_json(folder / "clean" / variant.name / "result.json", result)
-                rows.append(row)
-                write_json(destination / "summary.json", rows)
-                return False
         rows.append(row)
-        write_json(destination / "summary.json", rows)
-    return not any_failure
+        previous = None
+        last = index == len(revisions) - 1
+        for phase in (["clean"] if index == 0 else ["incremental", "clean"]):
+            if previous and row["steps"][-1]["status"] == "PASS" and not last:
+                break
+            results = []
+            for variant in variants:
+                results.append(variant.build(project, folder / phase / variant.name, phase == "clean"))
+                if results[-1]["status"] == "INVALID":
+                    break
+            status, diff = pair_status(results, store)
+            step = dict(phase=phase, status=status, diff=diff)
+            changed_after_clean = False
+            if len(results) == 2:
+                if previous:
+                    step["incremental_vs_clean"] = {v.name: differences(old, new, store)
+                        for v, old, new in zip(variants, previous, results) if old["status"] == "PASS"}
+                    changed_after_clean = any(step["incremental_vs_clean"].values())
+                else:
+                    step["skipped_by_sut"] = sorted(set(results[0].get("rebuilt_keys", [])) & set(results[1].get("retained", [])))
+                    step["recompilation"] = {v.name: {"rebuilt": len(r.get("rebuilt", [])),
+                        "unchanged": r.get("unchanged_rebuilt")} for v, r in zip(variants, results)}
+            # 清理前先留证；clean 恢复成功也不能抹掉已经观察到的异常。
+            failed |= status != "PASS" or changed_after_clean
+            if status != "PASS" or changed_after_clean or (last and previous is None):
+                for variant, result in zip(variants, results):
+                    variant.preserve(result)
+                    write_json(folder / phase / variant.name / "result.json", result)
+            row["steps"].append(step)
+            write_json(destination / "summary.json", rows)
+            print(f"{revision[:12]} {phase}: {status}", flush=True)
+            if status == "INVALID" or (phase == "clean" and status != "PASS"):
+                return 2 if status == "INVALID" else 1
+            previous = results
+    return int(failed)
 
 
-def run(compilers_path: Path, projects_path: Path, destination: Path) -> bool:
+def run(compilers_path: Path, projects_path: Path, destination: Path) -> int:
     compilers = Compilers.model_validate(yaml.safe_load(compilers_path.read_text())).compilers
     if set(compilers) != {"baseline", "sut"}:
         raise Invalid("compilers 必须同时提供 baseline 和 sut")
@@ -450,8 +405,7 @@ def run(compilers_path: Path, projects_path: Path, destination: Path) -> bool:
     destination.mkdir(parents=True, exist_ok=False)
     write_json(destination / "config.json", dict(compilers={k: v.model_dump(mode="json") for k, v in compilers.items()},
                                                projects=[p.model_dump() for p in projects]))
-    temporary = []
-    try:
+    with ExitStack() as temporary:
         homes = {name: prepare_home(absolute(str(c.kotlin_native_home), compilers_path.parent), temporary)
                  for name, c in compilers.items()}
         if homes["baseline"] == homes["sut"] or any(
@@ -465,7 +419,6 @@ def run(compilers_path: Path, projects_path: Path, destination: Path) -> bool:
                 stderr=subprocess.STDOUT, text=True),
             "compiler_jars": {str(p.relative_to(home)): store.record(p) for p in sorted((home / "konan/lib").glob("*.jar"))}
         } for name, home in homes.items()})
-        all_passed = True
         for index, project in enumerate(projects):
             root = destination / f"project-{index}"
             root.mkdir()
@@ -477,14 +430,10 @@ def run(compilers_path: Path, projects_path: Path, destination: Path) -> bool:
             git(root / "baseline", "worktree", "add", "--detach", str(root / "sut"), revisions[0])
             variants = [Variant(name, root / name, homes[name], compilers[name], store) for name in ("baseline", "sut")]
             write_json(root / "commits.json", revisions)
-            passed = replay(project, variants, revisions, root / "results", store)
-            all_passed &= passed
-            if not passed:
-                break
-        return all_passed
-    finally:
-        for temp in temporary:
-            temp.cleanup()
+            status = replay(project, variants, revisions, root / "results", store)
+            if status:
+                return status
+        return 0
 
 
 def main():
@@ -496,17 +445,12 @@ def main():
     if args.run_dir.exists():
         parser.error("run-dir 已存在，请使用新目录")
     try:
-        passed = run(args.compilers.resolve(), args.projects.resolve(), args.run_dir.resolve())
+        return run(args.compilers.resolve(), args.projects.resolve(), args.run_dir.resolve())
     except (Invalid, ValueError, OSError, yaml.YAMLError, tarfile.TarError, subprocess.CalledProcessError) as error:
         write_json(args.run_dir / "error.json", dict(status="INVALID", error=str(error)))
         print(f"INVALID: {error}", file=sys.stderr)
         return 2
-    if passed:
-        return 0
-    for summary in args.run_dir.glob("project-*/results/summary.json"):
-        if any(s["status"] == "INVALID" for row in json.loads(summary.read_text()) for s in row["steps"]):
-            return 2
-    return 1
+
 
 
 if __name__ == "__main__":
