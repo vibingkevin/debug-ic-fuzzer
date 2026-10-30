@@ -1,0 +1,51 @@
+import groovy.json.JsonOutput
+
+// 不修改被测项目：拦截插件解析，核验实际 KGP，强制执行 Native 链接。
+def version = System.getenv('IC_EVAL_KOTLIN')
+def evidence = new File(System.getenv('IC_EVAL_STEP'))
+gradle.settingsEvaluated { settings ->
+    settings.pluginManagement.resolutionStrategy.eachPlugin {
+        if (requested.id.id.startsWith('org.jetbrains.kotlin.')) useVersion(version)
+    }
+}
+gradle.projectsEvaluated {
+    def root = gradle.rootProject.projectDir.canonicalPath
+    gradle.rootProject.allprojects { p ->
+        def kotlin = p.extensions.findByName('kotlin')
+        if (kotlin == null || !kotlin.hasProperty('targets')) return
+        def plugin = p.plugins.findPlugin('org.jetbrains.kotlin.multiplatform')
+        if (plugin != null) {
+            def actual = plugin.class.classLoader.loadClass('org.jetbrains.kotlin.config.KotlinCompilerVersion').getField('VERSION').get(null)
+            if (actual != version) throw new GradleException("KGP version ${actual} != ${version}")
+        }
+        kotlin.targets.configureEach { target ->
+            if (!target.hasProperty('konanTarget')) return
+            target.compilations.configureEach { compilation ->
+                compilation.compileTaskProvider.configure { task ->
+                    task.compilerOptions.freeCompilerArgs.add("-Xklib-relative-path-base=${root}")
+                }
+            }
+            target.binaries.configureEach { binary ->
+                def mapping = "-Xdebug-prefix-map=${root}=/project"
+                binary.freeCompilerArgs += mapping
+                binary.freeCompilerArgs += "-Xoverride-konan-properties=additionalCacheFlags.${target.konanTarget.name}=${mapping}"
+            }
+        }
+        p.tasks.configureEach { task ->
+            if (!task.class.name.contains('KotlinNativeLink')) return
+            def id = task.path.replace(':', '_')
+            task.toolOptions.freeCompilerArgs.add("-Xdump-built-caches-to=${new File(evidence, id + '.rebuilt')}")
+            task.outputs.upToDateWhen { false }
+            task.doFirst {
+                evidence.mkdirs()
+                def home = new File(task.konanHome.get()).canonicalPath
+                if (home != new File(System.getenv('IC_EVAL_HOME')).canonicalPath)
+                    throw new GradleException("Native home mismatch: ${home}")
+                new File(evidence, id + '.task.json').text = JsonOutput.toJson([
+                    task: task.path, cwd: root, home: home, kotlin_version: version,
+                    output: task.outputFile.get().absolutePath
+                ])
+            }
+        }
+    }
+}

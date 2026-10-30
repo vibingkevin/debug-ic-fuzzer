@@ -1,0 +1,7 @@
+projects:
+  - repository: "https://github.com/vibingkevin/native-ic-sample.git"
+    branch: "main"                        # 沿 first-parent 历史，包含两端。
+    start_commit: "1233b13"
+    end_commit: "1233b13"
+    direction: forward                    # forward：起→止；reverse：止→起。
+    task: ":app:linkDebugTestLinuxX64"      # 自动获取产物和 IC 路径。

@@ -1,0 +1,406 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "debug-ic-fuzzer 执行流程",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/execution-flow.html"
+  },
+  "lanes": [
+    {
+      "id": "prepare",
+      "label": "准备与预检"
+    },
+    {
+      "id": "config_error",
+      "label": "预检异常",
+      "variant": "exception"
+    },
+    {
+      "id": "replay",
+      "label": "逐提交双轨回放"
+    },
+    {
+      "id": "baseline_error",
+      "label": "clean 与停止出口",
+      "variant": "exception"
+    },
+    {
+      "id": "verify",
+      "label": "比较与检查点"
+    },
+    {
+      "id": "exit",
+      "label": "结束与异常",
+      "variant": "exception"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "config",
+      "lane": "prepare",
+      "col": 0,
+      "type": "external",
+      "label": "读取两份配置",
+      "sublabel": "编译器与项目独立组合"
+    },
+    {
+      "id": "homes",
+      "lane": "prepare",
+      "col": 1,
+      "type": "backend",
+      "label": "解析 Native home",
+      "sublabel": "相对路径；tgz → /tmp"
+    },
+    {
+      "id": "preflight",
+      "lane": "prepare",
+      "col": 2,
+      "type": "security",
+      "label": "配置预检",
+      "sublabel": "任务、区间、工具链"
+    },
+    {
+      "id": "workspace",
+      "lane": "prepare",
+      "col": 3,
+      "type": "backend",
+      "label": "建立隔离工作区",
+      "sublabel": "一个 clone + 一个 worktree"
+    },
+    {
+      "id": "queue",
+      "lane": "prepare",
+      "col": 4,
+      "type": "backend",
+      "label": "冻结提交序列",
+      "sublabel": "含两端；正序或倒序"
+    },
+    {
+      "id": "checkout",
+      "lane": "replay",
+      "col": 0,
+      "type": "backend",
+      "label": "取当前提交",
+      "sublabel": "首笔 clean；后续增量"
+    },
+    {
+      "id": "baseline",
+      "lane": "replay",
+      "col": 1,
+      "type": "backend",
+      "label": "编译 baseline",
+      "sublabel": "独立缓存；实际 Native 调用"
+    },
+    {
+      "id": "bcapture",
+      "lane": "replay",
+      "col": 2,
+      "type": "database",
+      "label": "共用采集器",
+      "sublabel": "baseline 后采集；保留 konanc"
+    },
+    {
+      "id": "bgate",
+      "lane": "replay",
+      "col": 3,
+      "type": "security",
+      "label": "路径范围检查",
+      "sublabel": "所有报告的 .a"
+    },
+    {
+      "id": "sut",
+      "lane": "replay",
+      "col": 4,
+      "type": "backend",
+      "label": "编译 sut",
+      "sublabel": "同提交；独立缓存"
+    },
+    {
+      "id": "scapture",
+      "lane": "replay",
+      "col": 5,
+      "type": "database",
+      "label": "共用采集器",
+      "sublabel": "sut 后采集；同一个实现"
+    },
+    {
+      "id": "sgate",
+      "lane": "verify",
+      "col": 5,
+      "type": "security",
+      "label": "路径范围检查",
+      "sublabel": "所有报告的 .a"
+    },
+    {
+      "id": "compare",
+      "lane": "verify",
+      "col": 4,
+      "type": "backend",
+      "label": "同提交比较",
+      "sublabel": "产物、缓存与输入"
+    },
+    {
+      "id": "checkpoint",
+      "lane": "verify",
+      "col": 3,
+      "type": "security",
+      "label": "需要 clean 对照？",
+      "sublabel": "终点、DIFF、任一失败"
+    },
+    {
+      "id": "clean",
+      "lane": "baseline_error",
+      "col": 2,
+      "type": "backend",
+      "label": "两版分别 clean",
+      "sublabel": "同模式；共用后采集与检查"
+    },
+    {
+      "id": "save",
+      "lane": "verify",
+      "col": 1,
+      "type": "database",
+      "label": "保存结果与统计",
+      "sublabel": "保存时规范化并 MD5 去重"
+    },
+    {
+      "id": "advance",
+      "lane": "verify",
+      "col": 0,
+      "type": "security",
+      "label": "继续判定",
+      "sublabel": "有效且仍有提交则继续"
+    },
+    {
+      "id": "summary",
+      "lane": "exit",
+      "col": 0,
+      "type": "backend",
+      "label": "汇总并清理",
+      "sublabel": "先留证，再清理 /tmp"
+    },
+    {
+      "id": "config_stop",
+      "lane": "config_error",
+      "col": 2,
+      "type": "security",
+      "label": "预检失败停止",
+      "sublabel": "记录错误；清理解压目录"
+    },
+    {
+      "id": "cache_stop",
+      "lane": "baseline_error",
+      "col": 4,
+      "type": "security",
+      "label": "cache 越界停止",
+      "sublabel": "采集完成后结束整次运行"
+    },
+    {
+      "id": "clean_result",
+      "lane": "baseline_error",
+      "col": 1,
+      "type": "security",
+      "label": "clean 结果",
+      "sublabel": "两版均成功且一致？"
+    },
+    {
+      "id": "clean_stop",
+      "lane": "baseline_error",
+      "col": 0,
+      "type": "security",
+      "label": "clean 失败或仍 DIFF",
+      "sublabel": "留证后结束；不重复 clean"
+    }
+  ],
+  "edges": [
+    {
+      "id": "config-homes",
+      "from": "config",
+      "to": "homes"
+    },
+    {
+      "id": "homes-preflight",
+      "from": "homes",
+      "to": "preflight"
+    },
+    {
+      "id": "preflight-workspace",
+      "from": "preflight",
+      "to": "workspace"
+    },
+    {
+      "id": "workspace-queue",
+      "from": "workspace",
+      "to": "queue"
+    },
+    {
+      "id": "queue-checkout",
+      "from": "queue",
+      "to": "checkout",
+      "label": "开始",
+      "role": "return"
+    },
+    {
+      "id": "checkout-baseline",
+      "from": "checkout",
+      "to": "baseline"
+    },
+    {
+      "id": "baseline-bcapture",
+      "from": "baseline",
+      "to": "bcapture"
+    },
+    {
+      "id": "bcapture-bgate",
+      "from": "bcapture",
+      "to": "bgate"
+    },
+    {
+      "id": "bgate-sut",
+      "from": "bgate",
+      "to": "sut",
+      "label": "范围内"
+    },
+    {
+      "id": "sut-scapture",
+      "from": "sut",
+      "to": "scapture"
+    },
+    {
+      "id": "scapture-sgate",
+      "from": "scapture",
+      "to": "sgate"
+    },
+    {
+      "id": "sgate-compare",
+      "from": "sgate",
+      "to": "compare",
+      "label": "范围内"
+    },
+    {
+      "id": "compare-checkpoint",
+      "from": "compare",
+      "to": "checkpoint"
+    },
+    {
+      "id": "checkpoint-clean",
+      "from": "checkpoint",
+      "to": "clean",
+      "label": "需要"
+    },
+    {
+      "id": "checkpoint-save",
+      "from": "checkpoint",
+      "to": "save",
+      "label": "不需要",
+      "role": "branch"
+    },
+    {
+      "id": "save-advance",
+      "from": "save",
+      "to": "advance"
+    },
+    {
+      "id": "advance-checkout",
+      "from": "advance",
+      "to": "checkout",
+      "label": "下一笔",
+      "role": "return",
+      "fromSide": "left",
+      "toSide": "left"
+    },
+    {
+      "id": "advance-summary",
+      "from": "advance",
+      "to": "summary",
+      "label": "终点或无效"
+    },
+    {
+      "id": "bgate-stop",
+      "from": "bgate",
+      "to": "cache_stop",
+      "label": "越界",
+      "role": "error",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "sgate-stop",
+      "from": "sgate",
+      "to": "cache_stop",
+      "label": "越界",
+      "role": "error",
+      "variant": "security",
+      "toSide": "right"
+    },
+    {
+      "id": "preflight-stop",
+      "from": "preflight",
+      "to": "config_stop",
+      "label": "无效配置",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "id": "clean-result",
+      "from": "clean",
+      "to": "clean_result"
+    },
+    {
+      "id": "clean-result-save",
+      "from": "clean_result",
+      "to": "save",
+      "label": "是：新段",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "clean-result-stop",
+      "from": "clean_result",
+      "to": "clean_stop",
+      "label": "否",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "clean-cache-stop",
+      "from": "clean",
+      "to": "cache_stop",
+      "label": "越界",
+      "variant": "security",
+      "role": "error",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "一个版本覆盖入口",
+      "items": [
+        "配置说明只写在字段旁：start_commit / end_commit 指定含两端的区间，direction 为 forward 或 reverse。",
+        "从 konanc 的 -output/-o、-produce 和 -target 确定产物；从 -Xic-cache-dir 获取 IC 根，与各 home/klib/cache 一起检查缓存边界。",
+        "共用 init script 覆盖 Kotlin 插件版本；核对实际版本，不符即停。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "clean 后的决定",
+      "items": [
+        "终点、DIFF、任一失败时两版分别 clean；两版仍不同或任一失败则结束。",
+        "两版成功一致就保留原异常，从 clean 状态开新段。路径越界始终完成采集后立即结束。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "只采集需要的数据",
+      "items": [
+        "共用后采集器，保留实际 konanc 命令和重编清单；上一笔后采集作为前值。",
+        "只有一个 MD5：文本统一 LF、strip 整份首尾空白后计算，二进制按原字节计算；比较和写入去重共用。"
+      ]
+    }
+  ]
+}
