@@ -16,7 +16,7 @@ gradle.projectsEvaluated {
         def plugin = p.plugins.findPlugin('org.jetbrains.kotlin.multiplatform')
         if (plugin != null) {
             def actual = plugin.class.classLoader.loadClass('org.jetbrains.kotlin.config.KotlinCompilerVersion').getField('VERSION').get(null)
-            if (actual != version) throw new GradleException("KGP version ${actual} != ${version}")
+            if (actual != version) throw new GradleException("Kotlin 插件实际版本 ${actual} 与配置 ${version} 不一致")
         }
         kotlin.targets.configureEach { target ->
             if (!target.hasProperty('konanTarget')) return
@@ -35,12 +35,13 @@ gradle.projectsEvaluated {
             if (!task.class.name.contains('KotlinNativeLink')) return
             def id = task.path.replace(':', '_')
             task.toolOptions.freeCompilerArgs.add("-Xdump-built-caches-to=${new File(evidence, id + '.rebuilt')}")
+            // 每轮实际执行 Native 链接，不跳过，也不从构建缓存恢复。
             task.outputs.upToDateWhen { false }
             task.doFirst {
                 evidence.mkdirs()
                 def home = new File(task.konanHome.get()).canonicalPath
                 if (home != new File(System.getenv('IC_EVAL_HOME')).canonicalPath)
-                    throw new GradleException("Native home mismatch: ${home}")
+                    throw new GradleException("实际编译器目录与配置不一致：${home}")
                 new File(evidence, id + '.task.json').text = JsonOutput.toJson([
                     task: task.path, cwd: root, home: home, kotlin_version: version,
                     output: task.outputFile.get().absolutePath

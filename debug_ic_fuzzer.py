@@ -66,7 +66,7 @@ def commits(repo: Path, config: Project) -> list[str]:
     start = git(repo, "rev-parse", "--verify", config.start_commit + "^{commit}")
     end = git(repo, "rev-parse", "--verify", config.end_commit + "^{commit}")
     if start not in history or end not in history or history.index(start) > history.index(end):
-        raise Invalid("start_commit/end_commit 必须按时间先后位于 branch 的 first-parent 历史中")
+        raise Invalid("开始提交和结束提交必须在所选分支上，且开始提交不能晚于结束提交。")
     selected = history[history.index(start):history.index(end) + 1]
     return selected if config.direction == "forward" else selected[::-1]
 
@@ -220,8 +220,10 @@ class Variant:
             self.previous = None
         env = os.environ | {"GRADLE_USER_HOME": str(self.gradle), "IC_EVAL_KOTLIN": self.compiler.kotlin_version,
                             "IC_EVAL_HOME": str(self.home), "IC_EVAL_STEP": str(step)}
-        command = [str(self.checkout / "gradlew"), project.task, "--no-daemon", "--no-parallel", "--max-workers=2",
-                   "--no-build-cache", "--no-configuration-cache", "--console=plain", "--info",
+        # 禁用配置缓存，确保每轮注入新的采集目录。
+        # 普通格式的详细日志用于提取真实 konanc 参数；运行资源设置沿用项目默认值。
+        command = [str(self.checkout / "gradlew"), project.task,
+                   "--no-configuration-cache", "--console=plain", "--info",
                    "-I", str(init_script()), "-Pkotlin.incremental.native=true",
                    "-Pkotlin.internal.compiler.arguments.log.level=info", f"-Pkotlin.native.home={self.home}"]
         write_json(step / "build.json", dict(command=command, cwd=str(self.checkout), clean=clean,
@@ -454,10 +456,10 @@ def run(compilers_path: Path, projects_path: Path, destination: Path) -> bool:
                  for name, c in compilers.items()}
         if homes["baseline"] == homes["sut"] or any(
                 a.is_relative_to(b) for a, b in [(homes["baseline"], homes["sut"]), (homes["sut"], homes["baseline"])]):
-            raise Invalid("baseline/sut Native home 必须隔离")
+            raise Invalid("baseline 和 sut 必须使用不同的编译器目录")
         store = Store(destination / "store")
         if homes["baseline"].joinpath("klib/cache").resolve() == homes["sut"].joinpath("klib/cache").resolve():
-            raise Invalid("baseline/sut 指向同一个 compiler cache")
+            raise Invalid("baseline 和 sut 不能共用同一个编译缓存目录")
         write_json(destination / "toolchains.json", {name: {
             "home": str(home), "version": subprocess.check_output([str(home / "bin/konanc"), "-version"],
                 stderr=subprocess.STDOUT, text=True),
@@ -470,7 +472,7 @@ def run(compilers_path: Path, projects_path: Path, destination: Path) -> bool:
             repo = project.repository
             if (projects_path.parent / repo).exists():
                 repo = str((projects_path.parent / repo).resolve())
-            subprocess.run(["git", "clone", "--no-hardlinks", repo, str(root / "baseline")], check=True)
+            subprocess.run(["git", "clone", repo, str(root / "baseline")], check=True)
             revisions = commits(root / "baseline", project)
             git(root / "baseline", "worktree", "add", "--detach", str(root / "sut"), revisions[0])
             variants = [Variant(name, root / name, homes[name], compilers[name], store) for name in ("baseline", "sut")]
@@ -489,7 +491,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compilers", required=True, type=Path)
     parser.add_argument("--projects", required=True, type=Path)
-    parser.add_argument("--run-dir", required=True, type=Path, help="新的运行目录；一个 clone + 一个 worktree")
+    parser.add_argument("--run-dir", required=True, type=Path, help="保存结果的目录，必须尚未创建")
     args = parser.parse_args()
     if args.run_dir.exists():
         parser.error("run-dir 已存在，请使用新目录")
