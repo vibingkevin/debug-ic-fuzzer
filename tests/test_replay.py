@@ -3,7 +3,7 @@ import json
 import pytest
 
 from debug_ic_fuzzer import replay
-from ic_results import Store
+from impl.results import Store
 
 
 @pytest.mark.parametrize('steps,revision_count,exit_code', [

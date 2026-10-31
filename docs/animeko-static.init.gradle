@@ -1,9 +1,0 @@
-// 使用上游已注册的 framework，仅切换为静态产物；不修改业务源码。
-gradle.projectsEvaluated {
-    [':utils:platform', ':utils:ktor-client', ':utils:analytics'].each { path ->
-        def project = gradle.rootProject.findProject(path)
-        if (project == null) return
-        def target = project.kotlin.targets.getByName('iosSimulatorArm64')
-        target.binaries.findAll { it.name.endsWith('Framework') }.each { it.setStatic(true) }
-    }
-}

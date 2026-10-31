@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 from pathlib import Path
+import os
+import platform
 import tarfile
 import tempfile
 from typing import Literal
@@ -17,7 +19,7 @@ class Config(BaseModel):
 
 class Compiler(Config):
     kotlin_version: str
-    kotlin_native_home: Path
+    kotlin_native_home: Path | None = None
 
 
 class Compilers(Config):
@@ -25,17 +27,13 @@ class Compilers(Config):
 
 
 class Project(Config):
-    repository: str
+    repository: str = Field(pattern=r"^(?:https?://|ssh://|git@[^:]+:)")
     branch: str
     start_commit: str
     end_commit: str
     direction: Literal["forward", "reverse"] = "forward"
-    task: str
+    task: str = Field(pattern=r"^:[^\s:]+(?::[^\s:]+)*$")
     gradle_args: list[str] = Field(default_factory=list)
-
-
-class Projects(Config):
-    projects: list[Project] = Field(min_length=1)
 
 
 class Invalid(RuntimeError):
@@ -46,8 +44,21 @@ def absolute(value: str, cwd: Path) -> Path:
     return (cwd / value).resolve()
 
 
+def expand_args(args: list[str], base: Path) -> list[str]:
+    return [arg.replace("{config_dir}", str(base.resolve())) for arg in args]
+
+
 def within(path: Path, roots: list[Path]) -> bool:
     return any(path.resolve().is_relative_to(root.resolve()) for root in roots)
+
+
+def default_home(version: str) -> Path:
+    # 与 KGP 的 prebuilt 目录命名一致；尚未下载时也返回路径，由 KGP 下载。
+    host = {"Darwin": "macos", "Linux": "linux", "Windows": "windows"}[platform.system()]
+    arch = platform.machine().lower()
+    arch = {"arm64": "aarch64", "amd64": "x86_64"}.get(arch, arch)
+    root = Path(os.environ.get("KONAN_DATA_DIR", str(Path.home() / ".konan")))
+    return (root / f"kotlin-native-prebuilt-{host}-{arch}-{version}").resolve()
 
 
 def prepare_home(source: Path, temporary: ExitStack) -> Path:

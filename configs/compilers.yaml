@@ -1,0 +1,7 @@
+compilers:
+  baseline:
+    kotlin_version: "2.4.21"              # 覆盖插件和版本目录的 kotlin 项，不改项目文件。
+    kotlin_native_home: "./baseline.tgz"   # 可省略：KGP 下载到 KONAN_DATA_DIR（默认 ~/.konan）。
+  sut:
+    kotlin_version: "2.4.21"
+    kotlin_native_home: "./sut.tgz"        # 目录或压缩包，相对本 YAML；包解压到 /tmp。两版不能共用缓存。
