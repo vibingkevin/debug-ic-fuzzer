@@ -84,6 +84,8 @@ def test_framework_comparison(tmp_path, static, change):
                             output.seek(command_offset + sizeof(command))
                             output.write(b"x" * 16)
                         command_offset += command.cmdsize
+            # Older Xcode strip rejects the LINKEDIT gap left by signature removal.
+            subprocess.run(["codesign", "--force", "--sign", "-", str(binary)], check=True, capture_output=True)
     original_contents = (sut / "Sample").read_bytes()
     results = {}
     for variant in ("baseline", "sut"):
