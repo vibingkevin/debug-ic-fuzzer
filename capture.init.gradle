@@ -14,9 +14,12 @@ class ReportNativeLink implements Action<Task>, Serializable {
     }
 }
 
-def version = gradle.startParameter.projectProperties['ic.kotlin.version']
+// Included builds do not inherit the root build's project properties.
+def rootGradle = gradle
+while (rootGradle.parent != null) rootGradle = rootGradle.parent
+def version = rootGradle.startParameter.projectProperties['ic.kotlin.version']
 def requestedTasks = gradle.startParameter.taskNames
-if (requestedTasks.size() != 1) throw new GradleException('Specify exactly one final Native link task')
+if (gradle.parent == null && requestedTasks.size() != 1) throw new GradleException('Specify exactly one final Native link task')
 
 gradle.settingsEvaluated { settings ->
     settings.dependencyResolutionManagement.versionCatalogs.configureEach { it.version('kotlin', version) }
