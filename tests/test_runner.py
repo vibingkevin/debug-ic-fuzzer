@@ -139,7 +139,7 @@ sys.exit(7 if home.endswith('fail') else 0)
     assert not (destination / 'project').exists()
 
 
-@pytest.mark.parametrize("failure", [None, "baseline", "sut"])
+@pytest.mark.parametrize("failure", [None, "baseline", "sut", "production", "debug", "collection"])
 def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     import debug_ic_fuzzer as runner
     from impl.config import Compilers
@@ -162,12 +162,22 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
                     error=None, link={'task': ':app:link'})
 
     monkeypatch.setattr(runner, 'build', fake_build)
-    assert run(tmp_path / 'compilers.yaml', tmp_path / 'project.yaml') == int(failure is not None)
+    def collect_result(result, destination):
+        if failure == 'collection' and result['commit'] == 'b' and result['variant'] == 'baseline':
+            raise ValueError('Cache is outside the project')
+
+    def compare_results(results, destination):
+        changed = failure in ('production', 'debug') and results['baseline']['commit'] == 'b'
+        return dict(strict_equal=not changed, production_equal=not (changed and failure == 'production'))
+
+    monkeypatch.setattr(runner, 'collect', collect_result)
+    monkeypatch.setattr(runner, 'compare', compare_results)
+    assert run(tmp_path / 'compilers.yaml', tmp_path / 'project.yaml') == int(failure not in (None, 'debug'))
     assert created == [('baseline', 'a'), ('sut', 'a')]
-    revisions = ['a', 'b'] if failure else ['a', 'b', 'c']
+    revisions = ['a', 'b'] if failure not in (None, 'debug') else ['a', 'b', 'c']
     assert calls == [(sha, name) for sha in revisions for name in ('baseline', 'sut')]
     destination, = (tmp_path / 'run').iterdir()
-    assert len(list(destination.glob('*.json'))) == len(calls)
+    assert len(list(destination.glob('*.json'))) == len(calls) + len(revisions)
     for index, sha in enumerate(revisions):
         for name in ('baseline', 'sut'):
             record_name = f'{index:04d}-{sha}-{name}'

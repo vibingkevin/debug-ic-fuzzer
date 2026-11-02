@@ -1,0 +1,74 @@
+"""Compare final products; keep platform-specific normalization in one function."""
+
+from pathlib import Path
+import filecmp
+import hashlib
+import subprocess
+import tempfile
+
+from impl.collection import inside, normalized_text, snapshot
+
+
+def products(result: dict, destination: Path) -> dict[str, Path]:
+    project = Path(result["cwd"])
+    parked = destination / result["variant"]
+    output = parked / Path(result["link"]["output"]).relative_to(project)
+    if not inside(output, parked) or not output.is_file():
+        raise ValueError("Expected a Linux product file inside the project")
+    with output.open("rb") as stream:
+        if stream.read(4) != b"\x7fELF":
+            raise ValueError("Only Linux ELF products are supported; iOS is not implemented")
+    files = {}
+    for path in sorted(output.parent.rglob("*")):
+        if path.is_symlink():
+            raise ValueError(f"Product symlinks are unsupported: {path}")
+        if path.is_file():
+            files[str(Path("project") / path.relative_to(parked))] = path
+    if output.suffix == ".so" and not any(p.suffix == ".h" for p in files.values()):
+        raise ValueError("The shared library's generated header is missing")
+    return files
+
+
+def production_digest(path: Path, temporary: Path) -> str:
+    if path.suffix == ".h":
+        return hashlib.md5(normalized_text(path.read_bytes(), path.name)).hexdigest()
+    with path.open("rb") as stream:
+        elf = stream.read(4) == b"\x7fELF"
+    if elf:
+        output = temporary / "product"
+        subprocess.run(["llvm-strip", "--strip-all", "--remove-section=.note.gnu.build-id",
+                        "-o", str(output), str(path)], check=True, capture_output=True, text=True)
+        path = output
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "md5").hexdigest()
+
+
+def compare(results: dict, destination: Path) -> dict:
+    files = {name: products(result, destination) for name, result in results.items()}
+    baseline, sut = files["baseline"], files["sut"]
+    filecmp.clear_cache()
+    missing = sorted(baseline.keys() ^ sut.keys())
+    changed = sorted(path for path in baseline.keys() & sut.keys()
+                     if not filecmp.cmp(baseline[path], sut[path], shallow=False))
+    strict_equal = not missing and not changed
+    # Hash both views every time; save original contents only when strict comparison differs.
+    for name, result in results.items():
+        result["artifacts"] = [snapshot(path, logical, destination / "store", save=not strict_equal)
+                               for logical, path in files[name].items()]
+    with tempfile.TemporaryDirectory(prefix="ic-compare-") as temporary:
+        digests = {}
+        for name, result in results.items():
+            for entry in result["artifacts"]:
+                path = files[name][entry["path"]]
+                key = (path.suffix, entry["md5"])
+                if key not in digests:
+                    digests[key] = production_digest(path, Path(temporary))
+                entry["production_md5"] = digests[key]
+    hashes = {name: {f["path"]: f["production_md5"] for f in result["artifacts"]}
+              for name, result in results.items()}
+    production_diff = sorted(missing + [path for path in changed
+                                       if hashes["baseline"][path] != hashes["sut"][path]])
+    comparison = dict(strict_equal=strict_equal, production_equal=not production_diff)
+    if not strict_equal:
+        comparison.update(strict_diff=sorted(missing + changed), production_diff=production_diff)
+    return comparison

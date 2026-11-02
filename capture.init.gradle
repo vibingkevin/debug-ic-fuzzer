@@ -3,11 +3,13 @@ import groovy.json.JsonOutput
 // Store only values so the action can run after Configuration Cache restoration.
 class ReportNativeLink implements Action<Task>, Serializable {
     String version
+    String builtCaches
     void execute(Task task) {
+        new File(builtCaches).delete()
         task.logger.lifecycle('IC_FUZZER ' + JsonOutput.toJson([
             task: task.path, kotlin_version: version,
             home: new File(task.konanHome.get()).canonicalPath,
-            output: task.outputFile.get().absolutePath
+            output: task.outputFile.get().absolutePath, built_caches: builtCaches
         ]))
     }
 }
@@ -31,5 +33,7 @@ gradle.projectsEvaluated {
     if (actual != version) throw new GradleException("Actual KGP version ${actual} does not match configured version ${version}")
     // Disable Build Cache only for the final link; preserve Configuration Cache, UP-TO-DATE, and dependency caching.
     task.outputs.doNotCacheIf('Native IC must execute instead of restoring a cached link output') { true }
-    task.doFirst(new ReportNativeLink(version: version))
+    def builtCaches = new File(task.temporaryDir, 'built-caches.txt').absolutePath
+    task.toolOptions.freeCompilerArgs.add("-Xdump-built-caches-to=${builtCaches}".toString())
+    task.doFirst(new ReportNativeLink(version: version, builtCaches: builtCaches))
 }

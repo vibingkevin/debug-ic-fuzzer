@@ -1,9 +1,9 @@
 # debug-ic-fuzzer
 
 Replay a commit range with baseline and sut, using the same absolute project path and separate worktrees and Native caches.
-This version builds products only. It does not run functional tests, compare artifacts, count cache rebuilds, or automatically clean.
+Build and compare Linux products, and collect Native cache snapshots. No functional tests, cross-commit analysis, or automatic clean.
 
-Requires Python 3.12+, Git, and a JDK. Supports Linux x64 and Apple Silicon Mac; iOS builds also require Xcode.
+Requires Linux x64, Python 3.12+, Git, a JDK, and `llvm-strip`. iOS framework comparison is not implemented.
 
 ```sh
 python3 -m venv .venv
@@ -28,7 +28,8 @@ Each run:
 2. Create `run/<compiler-config>-<project-config>-<timestamp>/` and two independent worktrees at the first commit in replay order.
    The timestamp uses `YYYYMMDD-HHMMSS`; an existing directory is an error.
 3. Move baseline to `project` with `git worktree move`, check out the requested commit, run the Gradle task, and move it back even on failure.
-4. Repeat for sut, then advance both worktrees to the next commit, retaining their build outputs and caches.
+4. Collect baseline caches, repeat for sut, then compare final products before advancing to the next commit.
+   Retain both worktrees' build outputs and caches.
    Write logs directly to files and read them only after the build finishes.
 
 Each commit writes two JSON records and two Gradle logs directly in the run directory, named
@@ -36,7 +37,29 @@ Each commit writes two JSON records and two Gradle logs directly in the run dire
 The zero-based index follows replay order. Gradle uses its default log level; KGP reports compiler arguments at warning level.
 Logs include konanc arguments, without normalization or deduplication.
 A failed build or result check still saves the record and allows the other variant of that commit to run, then stops replay.
-Records contain the command, compiler path, duration, exit code, and final link details; artifacts and IC files are not scanned or archived.
+Records contain the command, compiler path, duration, exit code, final link details, `cache_files`, and `artifacts`.
+Each commit also writes `0000-<commit12>-comparison.json` with `strict_equal` and `production_equal`.
+Production differences or collection errors stop replay; differences only in the unstripped product do not.
+Missing files are differences. Compiler caches are collected, not compared during replay.
+
+Collection and comparison:
+
+- `cache_files`: scan the single `-Xic-cache-dir` and the compiler's `klib/cache`, after every build including UP-TO-DATE.
+  Record `path`, `md5`, and `mtime_ns`. Paths start with `project/` or `native-home/`, never baseline/sut.
+- Cache `metadata.properties` and `bitcode_deps` are saved after converting line endings to LF and stripping surrounding whitespace.
+  Remove `compilerFingerprint` from metadata before hashing and saving. Cache `.a`, IR, and other files are hashed as bytes but not saved.
+- `artifacts`: inspect the final Linux product directory (`.kexe`, or `.so` plus its generated `.h`).
+  Each file records `path`, raw `md5`, `production_md5`, and `mtime_ns`.
+  The production view strips ELF symbols/debug information and removes `.note.gnu.build-id`; headers use normalized text.
+  Other output files use their original bytes. The original files are never modified.
+- Compare original products byte for byte first. Save both variants' original product contents only if strict comparison differs.
+  Equal products retain both hashes without saving contents. Temporary production views are always deleted.
+- Saved contents are deduplicated immediately in `store/<filename>/<filename>-<md5>` shared by the run.
+  Records do not repeat the derived store path. Cache archive contents are not retained for historical inspection; replay to reproduce them.
+- The compiler's built-cache report checks actual archive paths against the two tracked cache roots.
+  External cache overrides, escaping paths, shared compiler cache roots, and cache/product symlinks are rejected.
+
+Strip errors are recorded and stop replay. A production difference is a comparison failure, not proof of a compiler bug.
 Sources and outputs remain in their worktrees. `repos/` and `run/` are ignored by Git.
 
 The tool passes `--gradle-user-home <tool-root>/.gradle-home`, overriding the inherited `GRADLE_USER_HOME`.
@@ -51,7 +74,9 @@ Records include the link task state. There is no comparison with previous result
 `debug_ic_fuzzer.py` coordinates both variants. `impl/config.py` handles configuration and distributions;
 `impl/repository.py` prepares repositories; `impl/build.py` runs and records a single build.
 `impl/validation.py` checks the completed build's link state, compiler path, and output.
-`capture.init.gradle` overrides KGP, excludes the final link from Build Cache, and reports the actual compiler path.
+`impl/collection.py` snapshots caches and writes the store; `impl/comparison.py` compares products.
+Platform-specific production normalization stays in `production_digest`; future iOS support can reuse the record format.
+`capture.init.gradle` overrides KGP, excludes the final link from Build Cache, reports the actual compiler path, and requests the built-cache archive list.
 
 ### Inlining options
 
@@ -68,6 +93,8 @@ Kotlin/Native 2.4.21 supports these values for `-Xklib-ir-inliner=`:
 Kotlin 2.4 defaults to intra-module early inlining; 2.5 extends this to cross-module inlining.
 See the [official release notes](https://kotlinlang.org/docs/whatsnew-eap.html#consistent-cross-module-function-inlining-during-klib-compilation).
 These are compiler options, not Gradle arguments. This tool does not set inlining options.
+
+Tests also require `cc` and `objcopy` for small ELF fixtures.
 
 ```sh
 .venv/bin/python -m pytest -q
