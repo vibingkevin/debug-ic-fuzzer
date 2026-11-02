@@ -17,25 +17,25 @@ from impl.config import Compilers, Project, load_config, resolve_native_home
 from impl.repository import prepare_repository, create_detached_worktree, activate_worktree
 
 
-def replay_commits(compilers_yaml: Path, project_yaml: Path) -> int:
+def replay_commits(compilers_config_path: Path, project_config_path: Path) -> int:
     """Replay both compilers, collect results, and stop after a failed commit pair.
 
     Args:
-        compilers_yaml: YAML file defining baseline and sut distributions.
-        project_yaml: YAML file defining the repository, commit range, and Gradle task.
+        compilers_config_path: Configuration file defining baseline and sut distributions.
+        project_config_path: Configuration file defining the repository, commit range, and Gradle task.
 
     Returns:
         0 if all pairs pass production comparison, otherwise 1. Writes results and
         worktrees under the current directory; configuration/setup errors propagate.
     """
-    compilers = load_config(compilers_yaml, Compilers).compilers
-    project_config = load_config(project_yaml, Project)
-    project_config.gradle_args = [arg.replace("{config_dir}", str(project_yaml.parent)) for arg in project_config.gradle_args]
+    compilers = load_config(compilers_config_path, Compilers).compilers
+    project_config = load_config(project_config_path, Project)
+    project_config.gradle_args = [arg.replace("{config_dir}", str(project_config_path.parent)) for arg in project_config.gradle_args]
     tool_directory = Path.cwd()
-    run_directory = tool_directory / "run" / f"{compilers_yaml.stem}-{project_yaml.stem}-{datetime.now():%Y%m%d-%H%M%S}"
+    run_directory = tool_directory / "run" / f"{compilers_config_path.stem}-{project_config_path.stem}-{datetime.now():%Y%m%d-%H%M%S}"
     run_directory.mkdir(parents=True)
     with ExitStack() as compiler_cleanup:
-        native_homes = {variant: resolve_native_home(compiler_config, compilers_yaml.parent, compiler_cleanup) for variant, compiler_config in compilers.items()}
+        native_homes = {variant: resolve_native_home(compiler_config, compilers_config_path.parent, compiler_cleanup) for variant, compiler_config in compilers.items()}
         if (native_homes["baseline"] / "klib/cache").resolve() == (native_homes["sut"] / "klib/cache").resolve():
             raise ValueError("baseline and sut cannot use the same Native cache")
         bare_repository, commit_ids = prepare_repository(tool_directory / "repos", project_config)

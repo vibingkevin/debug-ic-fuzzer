@@ -42,12 +42,12 @@ class Project(Config):
     gradle_args: list[str] = Field(default_factory=list)
 
 
-def load_config(yaml_path: Path, config_model):
-    """Read yaml_path and validate it with the supplied Pydantic config_model class.
+def load_config(config_path: Path, config_model):
+    """Read config_path and validate it with the supplied Pydantic config_model class.
 
     Return the model instance; file, YAML, and validation errors propagate.
     """
-    return config_model.model_validate(yaml.safe_load(yaml_path.read_text()))
+    return config_model.model_validate(yaml.safe_load(config_path.read_text()))
 
 
 def resolve_native_home(compiler_config: Compiler, compiler_config_directory: Path, extraction_cleanup: ExitStack) -> Path:
