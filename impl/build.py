@@ -40,7 +40,10 @@ def build(
         command = [
             str(build_directory / "gradlew"),
             project.task,
-            *[arg.replace("{config_dir}", str(config_dir)) for arg in project.gradle_args],
+            *[
+                arg.replace("{config_dir}", str(config_dir))
+                for arg in project.gradle_args
+            ],
             "--gradle-user-home",
             str(Path.cwd() / ".gradle-home"),
             "--console=plain",
@@ -59,7 +62,11 @@ def build(
             ).returncode
     seconds = time.monotonic() - started
     log_text = log.read_text(errors="replace")
-    task_states = re.findall(r"^> Task " + re.escape(project.task) + r"(?: ([A-Z-]+))?$", log_text, re.MULTILINE)
+    task_states = re.findall(
+        r"^> Task " + re.escape(project.task) + r"(?: ([A-Z-]+))?$",
+        log_text,
+        re.MULTILINE,
+    )
     task_state = (task_states[-1] or "EXECUTED") if task_states else None
     calls = [
         json.loads(line.removeprefix("IC_FUZZER "))

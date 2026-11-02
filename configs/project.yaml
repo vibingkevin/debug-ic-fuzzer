@@ -2,7 +2,7 @@
 repository: "https://github.com/vibingkevin/native-ic-sample.git" # Git URLs only; local paths are not supported.
 branch: "main"                        # The branch must contain both endpoints.
 start_commit: "db60251d556ced9a5849a022689df443538afea6"
-end_commit: "51931bd2626afa8166234dac197f1fa54e44228f"
+end_commit: "4a0ae75620086024a5cd166691e13513d25573a5"
 direction: forward                    # forward: oldest to newest; reverse: newest to oldest.
 task: ":app:linkDebugExecutableLinuxX64"      # The final product link task.
 # gradle_args: ["-Pfeature=true"]      # Optional; {config_dir} expands to this YAML directory.

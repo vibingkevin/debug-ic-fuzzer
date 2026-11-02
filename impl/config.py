@@ -60,6 +60,7 @@ def prepare_home(compiler: Compiler, config_dir: Path, temporary: ExitStack) -> 
             base / f"kotlin-native-prebuilt-{host}-{compiler.kotlin_version}"
         ).resolve()
     if native_home_path.name.endswith((".tgz", ".tar.gz")):
+        # extract from archive, every time
         extraction_dir = Path(
             temporary.enter_context(
                 tempfile.TemporaryDirectory(prefix="ic-fuzzer-", dir="/tmp")
@@ -68,14 +69,19 @@ def prepare_home(compiler: Compiler, config_dir: Path, temporary: ExitStack) -> 
         archive_path = config_dir / native_home_path
         with tarfile.open(archive_path) as archive:
             archive.extractall(extraction_dir, filter="data")
-        candidates = list(extraction_dir.glob("*/bin/konanc")) + list(extraction_dir.glob("bin/konanc"))
+        candidates = list(extraction_dir.glob("*/bin/konanc")) + list(
+            extraction_dir.glob("bin/konanc")
+        )
         if len(candidates) != 1:
             raise ValueError(
                 f"The archive must contain exactly one bin/konanc: {native_home_path}"
             )
         return candidates[0].parent.parent.resolve()
     if not native_home_path.is_absolute():
-        raise ValueError(f"Compiler directory must be an absolute path: {native_home_path}")
+        # if it's a path, requires absolute path
+        raise ValueError(
+            f"Compiler directory must be an absolute path: {native_home_path}"
+        )
     if not (native_home_path / "bin/konanc").is_file():
         raise ValueError(f"Cannot find bin/konanc: {native_home_path}")
     return native_home_path.resolve()

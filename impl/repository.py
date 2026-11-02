@@ -27,15 +27,21 @@ def create_worktree(repository: Path, directory: Path, commit: str):
 @contextmanager
 def checkout_worktree(repository: Path, variant_directory: Path, commit: str):
     build_directory = variant_directory.parent / "project"
-    _run_git(repository, "worktree", "move", str(variant_directory), str(build_directory))
+    _run_git(
+        repository, "worktree", "move", str(variant_directory), str(build_directory)
+    )
     try:
         subprocess.run(
             ["git", "-C", str(build_directory), "checkout", "--detach", commit],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         )
         yield build_directory
     finally:
-        _run_git(repository, "worktree", "move", str(build_directory), str(variant_directory))
+        _run_git(
+            repository, "worktree", "move", str(build_directory), str(variant_directory)
+        )
 
 
 def prepare_repository(root: Path, project: Project) -> tuple[Path, list[str]]:
@@ -53,8 +59,12 @@ def prepare_repository(root: Path, project: Project) -> tuple[Path, list[str]]:
     history = _run_git(
         repository, "rev-list", "--first-parent", "--reverse", ref
     ).splitlines()
-    start = _run_git(repository, "rev-parse", "--verify", project.start_commit + "^{commit}")
-    end = _run_git(repository, "rev-parse", "--verify", project.end_commit + "^{commit}")
+    start = _run_git(
+        repository, "rev-parse", "--verify", project.start_commit + "^{commit}"
+    )
+    end = _run_git(
+        repository, "rev-parse", "--verify", project.end_commit + "^{commit}"
+    )
     if (
         start not in history
         or end not in history
@@ -63,5 +73,5 @@ def prepare_repository(root: Path, project: Project) -> tuple[Path, list[str]]:
         raise ValueError(
             "Start and end commits must be on the selected branch, with start no later than end"
         )
-    commits = history[history.index(start):history.index(end) + 1]
+    commits = history[history.index(start) : history.index(end) + 1]
     return repository, commits if project.direction == "forward" else commits[::-1]
