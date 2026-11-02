@@ -29,7 +29,19 @@ Add these entries to `gradle_args` in an Animeko project configuration alongside
 
 The supplied init script keeps all Kotlin 2.4.21 `ios_arm64` platform linker flags except the early `-lSystem`, then adds `-lSystem` after compiler-rt and selects small stubs. Both baseline and sut receive the same options. The compiler distribution, IC settings, and comparison rules are unchanged. The default project configuration does not enable it.
 
-Five real Gradle/Kotlin links with these options produced identical complete artifact inventories, including the original framework binary, headers, metadata, and dSYM. Every link rebuilt zero Native cache units. Framework MD5: `a838ec7a49a75652cfd5b91be45b356e`; production MD5: `e4248cb7e84112736dbafe19915d45e4`. This verifies repeated warm links at one commit, not clean or cross-commit replay.
+Five real Gradle/Kotlin links with these options produced identical complete artifact inventories, including the original framework binary, headers, metadata, and dSYM. Every link rebuilt zero Native cache units. Framework MD5: `a838ec7a49a75652cfd5b91be45b356e`; production MD5: `e4248cb7e84112736dbafe19915d45e4`. This verifies repeated warm links at one commit.
+
+A subsequent fuzzer replay built five consecutive commits with separate baseline/sut worktrees, both using community 2.4.21 and this init script. All 10 Native links executed; all five pairs passed both strict and production comparison, including dSYM. Rebuilt cache counts matched on both sides:
+
+| Commit | Rebuilt cache units per variant |
+| --- | ---: |
+| `741b66951a0f` | 1823 |
+| `366484bce7bb` | 8 |
+| `aa75e3834b35` | 33 |
+| `853f1f697c54` | 405 |
+| `f9843a046e72` | 439 |
+
+The first pair started with empty project/dependency caches and shared existing compiler system caches. This is not a fully empty compiler-cache clean-rebuild test. The compiler, app, and target scope above still applies.
 
 The override is specific to the tested Kotlin version's platform flags. Recheck it when upgrading. Small stubs add an extra branch in Objective-C dispatch; Apple describes the size/performance tradeoff in [WWDC22](https://developer.apple.com/videos/play/wwdc2022/110363/). Runtime performance was not measured. This is an explicit test workaround, not a compiler or Apple linker fix.
 
