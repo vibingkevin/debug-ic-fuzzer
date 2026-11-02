@@ -10,8 +10,7 @@ CACHE_TEXT = {"metadata.properties", "bitcode_deps"}
 def normalized_text(data: bytes, name: str) -> bytes:
     text = data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
     if name == "metadata.properties":
-        text = "\n".join(line for line in text.splitlines()
-                         if line.split("=", 1)[0].strip() != "compilerFingerprint")
+        text = "\n".join(line for line in text.splitlines() if line.split("=", 1)[0].strip() != "compilerFingerprint")
     return text.strip().encode("utf-8")
 
 
@@ -47,6 +46,5 @@ def collect(roots: list[tuple[Path, str]], store: Path) -> list[dict]:
                 raise ValueError(f"Cache symlinks are unsupported: {path}")
             if path.is_file():
                 text = path.name in CACHE_TEXT
-                files.append(snapshot(path, str(Path(logical) / path.relative_to(root)),
-                                      store, save=text, text=text))
+                files.append(snapshot(path, str(Path(logical) / path.relative_to(root)), store, save=text, text=text))
     return files

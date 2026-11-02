@@ -34,8 +34,7 @@ def production_digest(path: Path, temporary: Path) -> str:
         elf = stream.read(4) == b"\x7fELF"
     if elf:
         output = temporary / "product"
-        subprocess.run(["llvm-strip", "--strip-all", "--remove-section=.note.gnu.build-id",
-                        "-o", str(output), str(path)], check=True, capture_output=True, text=True)
+        subprocess.run(["llvm-strip", "--strip-all", "--remove-section=.note.gnu.build-id", "-o", str(output), str(path)], check=True, capture_output=True, text=True)
         path = output
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "md5").hexdigest()
@@ -43,8 +42,7 @@ def production_digest(path: Path, temporary: Path) -> str:
 
 def collect_products(result: dict, destination: Path):
     files = products(result)
-    result["artifacts"] = [snapshot(path, logical, destination / "store", save=False)
-                           for logical, path in files.items()]
+    result["artifacts"] = [snapshot(path, logical, destination / "store", save=False) for logical, path in files.items()]
     with tempfile.TemporaryDirectory(prefix="ic-compare-") as temporary:
         for entry in result["artifacts"]:
             entry["production_md5"] = production_digest(files[entry["path"]], Path(temporary))
@@ -59,13 +57,11 @@ def save_artifacts(results: dict, destination: Path):
 
 
 def compare(results: dict, destination: Path) -> dict:
-    baseline, sut = ({f["path"]: f for f in results[name]["artifacts"]}
-                     for name in ("baseline", "sut"))
+    baseline, sut = ({f["path"]: f for f in results[name]["artifacts"]} for name in ("baseline", "sut"))
     missing = baseline.keys() ^ sut.keys()
     common = baseline.keys() & sut.keys()
     strict_diff = sorted(missing | {p for p in common if baseline[p]["md5"] != sut[p]["md5"]})
-    production_diff = sorted(missing | {p for p in common
-                                       if baseline[p]["production_md5"] != sut[p]["production_md5"]})
+    production_diff = sorted(missing | {p for p in common if baseline[p]["production_md5"] != sut[p]["production_md5"]})
     comparison = dict(strict_equal=not strict_diff, production_equal=not production_diff)
     if strict_diff:
         save_artifacts(results, destination)

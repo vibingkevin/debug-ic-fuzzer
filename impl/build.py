@@ -13,34 +13,16 @@ from impl.validation import validate_caches, validate_result
 
 def init_script() -> Path:
     script_path = Path(__file__).parent.parent / "capture.init.gradle"
-    return (
-        script_path
-        if script_path.exists()
-        else Path(sys.prefix) / "share/debug-ic-fuzzer/capture.init.gradle"
-    )
+    return script_path if script_path.exists() else Path(sys.prefix) / "share/debug-ic-fuzzer/capture.init.gradle"
 
 
-def build(
-    build_directory: Path,
-    destination: Path,
-    name: str,
-    revision: str,
-    project: Project,
-    compiler: Compiler,
-    home: Path,
-    config_dir: Path,
-    record_name: str,
-    last_link: dict | None = None,
-) -> tuple[dict, list[tuple[Path, str]]]:
+def build(build_directory: Path, destination: Path, name: str, revision: str, project: Project, compiler: Compiler, home: Path, config_dir: Path, record_name: str, last_link: dict | None = None) -> tuple[dict, list[tuple[Path, str]]]:
     log = destination / f"{record_name}.gradle.log"
     started = time.monotonic()
     command = [
         str(build_directory / "gradlew"),
         project.task,
-        *[
-            arg.replace("{config_dir}", str(config_dir))
-            for arg in project.gradle_args
-        ],
+        *[arg.replace("{config_dir}", str(config_dir)) for arg in project.gradle_args],
         "--gradle-user-home",
         str(Path.cwd() / ".gradle-home"),
         "--console=plain",
@@ -54,22 +36,12 @@ def build(
         command.append(f"-Pkotlin.native.home={home}")
     # Parse task details only after completion; keep the full log, including konanc arguments.
     with log.open("w") as output:
-        code = subprocess.run(
-            command, cwd=build_directory, stdout=output, stderr=subprocess.STDOUT
-        ).returncode
+        code = subprocess.run(command, cwd=build_directory, stdout=output, stderr=subprocess.STDOUT).returncode
     seconds = time.monotonic() - started
     log_text = log.read_text(errors="replace")
-    task_states = re.findall(
-        r"^> Task " + re.escape(project.task) + r"(?: ([A-Z-]+))?$",
-        log_text,
-        re.MULTILINE,
-    )
+    task_states = re.findall(r"^> Task " + re.escape(project.task) + r"(?: ([A-Z-]+))?$", log_text, re.MULTILINE)
     task_state = (task_states[-1] or "EXECUTED") if task_states else None
-    calls = [
-        json.loads(line.removeprefix("IC_FUZZER "))
-        for line in log_text.splitlines()
-        if line.startswith("IC_FUZZER ")
-    ]
+    calls = [json.loads(line.removeprefix("IC_FUZZER ")) for line in log_text.splitlines() if line.startswith("IC_FUZZER ")]
     # Only carry task metadata for UP-TO-DATE; never compare with previous results.
     link = calls[0] if len(calls) == 1 else None
     if not calls and task_state == "UP-TO-DATE":
@@ -87,19 +59,7 @@ def build(
         if len(directories) == 1:
             link["ic_cache_dir"] = directories.pop()
         report_path = link.get("built_caches")
-    result = dict(
-        commit=revision,
-        variant=name,
-        command=command,
-        cwd=str(build_directory),
-        kotlin_version=compiler.kotlin_version,
-        native_home=str(home),
-        exit_code=code,
-        seconds=seconds,
-        task_state=task_state,
-        link=link,
-        log=log.name,
-    )
+    result = dict(commit=revision, variant=name, command=command, cwd=str(build_directory), kotlin_version=compiler.kotlin_version, native_home=str(home), exit_code=code, seconds=seconds, task_state=task_state, link=link, log=log.name)
     result["error"] = validate_result(result)
     roots = [(home / "klib/cache", "native-home/klib/cache")]
     try:
