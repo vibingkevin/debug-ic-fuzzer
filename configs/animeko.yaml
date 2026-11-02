@@ -4,6 +4,9 @@ repository: "https://github.com/open-ani/animeko.git"
 branch: "main"
 start_commit: "b5849b0fd7934b6102fa237a8b1a2f4cd0cc885a"
 end_commit: "ced27af74e10653257537d91622bcdc1a168a976"
+# Larger range (12 commits):
+# start_commit: "0e5575894362ed2e760f48b8e44d12f918d59672"
+# end_commit: "e086c335ca21a7acb3d9bcb933eb6125223ce498"
 direction: forward
 task: ":app:shared:application:linkPodDebugFrameworkIosSimulatorArm64"
 gradle_args:

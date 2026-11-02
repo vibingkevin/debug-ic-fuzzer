@@ -4,4 +4,4 @@ compilers:
     kotlin_native_home: "./baseline.tgz"   # Optional; KGP downloads to KONAN_DATA_DIR (default: ~/.konan).
   sut:
     kotlin_version: "2.4.21"
-    kotlin_native_home: "./sut.tgz"        # Directories must be absolute; archives may be relative to this YAML and are extracted to /tmp each run.
+    kotlin_native_home: "./baseline.tgz"        # Directories must be absolute; archives may be relative to this YAML and are extracted to /tmp each run.
