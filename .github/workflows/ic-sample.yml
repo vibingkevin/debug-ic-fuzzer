@@ -58,11 +58,11 @@ jobs:
             .gradle-home/caches/modules-2
             .gradle-home/wrapper/dists
             .konan/dependencies
-          key: ic-dependencies-${{ matrix.platform }}-${{ hashFiles('configs/compilers-ci.yaml', 'configs/ic-sample-*.yaml') }}
+          key: ic-dependencies-${{ matrix.platform }}-${{ hashFiles('configs/compilers.yaml', 'configs/ic-sample-*.yaml') }}
       - name: Run unit tests
         run: .venv/bin/python -m pytest -q
       - name: Replay IC sample
-        run: .venv/bin/python debug_ic_fuzzer.py --compilers configs/compilers-ci.yaml --project '${{ matrix.project }}'
+        run: .venv/bin/python debug_ic_fuzzer.py --compilers configs/compilers.yaml --project '${{ matrix.project }}'
       - name: Upload replay results
         if: always()
         uses: actions/upload-artifact@v4
