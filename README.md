@@ -28,7 +28,7 @@ Each run:
 4. Repeat for sut. Write logs directly to files and read them only after the build finishes.
 
 Each variant writes one result file, `baseline.json` or `sut.json`. Full Gradle logs, including konanc arguments,
-share `store/gradle.log/gradle.log_<md5>`. Text is normalized to LF and trimmed before hashing and deduplication.
+are kept alongside them as `baseline.gradle.log` and `sut.gradle.log`, without normalization or deduplication.
 A failed build still saves its log and allows the other variant to run.
 Records contain the command, compiler path, duration, exit code, and final link details; artifacts and IC files are not scanned or archived.
 Sources and outputs remain in their worktrees. `repos/` and `run/` are ignored by Git.

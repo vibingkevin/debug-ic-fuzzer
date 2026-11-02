@@ -93,7 +93,9 @@ sys.exit(7 if home.endswith('fail') else 0)
         result = build(repository, destination, name, revision, project, compiler, home, tmp_path)
         assert result['exit_code'] == (7 if name == 'baseline' else 0)
         assert result['error'] is None
+        assert result['log'] == f'{name}.gradle.log'
         assert (destination / result['log']).is_file()
+        assert not (destination / 'store').exists()
         assert not (destination / 'project').exists()
         assert '-Pic.kotlin.version=2.4.21' in result['command']
         assert not any(a.startswith('-Pkotlin.native.version=') for a in result['command'])

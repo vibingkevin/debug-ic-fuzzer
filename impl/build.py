@@ -1,7 +1,6 @@
 """Move the project, run Gradle once, and record the result after completion."""
 
 from pathlib import Path
-import hashlib
 import json
 import subprocess
 import sys
@@ -31,7 +30,7 @@ def build(
     config_dir: Path,
 ) -> dict:
     variant_directory = destination / name
-    log = destination / f".{name}.log"
+    log = destination / f"{name}.gradle.log"
     started = time.monotonic()
     with checkout_worktree(repository, variant_directory, revision) as build_directory:
         command = [
@@ -54,22 +53,9 @@ def build(
                 command, cwd=build_directory, stdout=output, stderr=subprocess.STDOUT
             ).returncode
     seconds = time.monotonic() - started
-    content = (
-        log.read_text(errors="replace")
-        .replace("\r\n", "\n")
-        .replace("\r", "\n")
-        .strip()
-        .encode()
-    )
-    digest = hashlib.md5(content).hexdigest()
-    stored = destination / "store" / "gradle.log" / f"gradle.log_{digest}"
-    stored.parent.mkdir(parents=True, exist_ok=True)
-    if not stored.exists():
-        stored.write_bytes(content)
-    log.unlink()
     calls = [
         json.loads(line.removeprefix("IC_FUZZER "))
-        for line in content.decode().splitlines()
+        for line in log.read_text(errors="replace").splitlines()
         if line.startswith("IC_FUZZER ")
     ]
     error = None
@@ -93,5 +79,5 @@ def build(
         error=error,
         seconds=seconds,
         link=calls[-1] if calls else None,
-        log=str(stored.relative_to(destination)),
+        log=log.name,
     )
