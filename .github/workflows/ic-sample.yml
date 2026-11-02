@@ -28,11 +28,9 @@ jobs:
         include:
           - platform: linux-x64
             runner: ubuntu-24.04
-            native_platform: linux-x86_64
             project: configs/ic-sample-linux.yaml
           - platform: macos-arm64
             runner: macos-15
-            native_platform: macos-aarch64
             project: configs/ic-sample-ios.yaml
     env:
       GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-home
@@ -61,12 +59,6 @@ jobs:
             .gradle-home/wrapper/dists
             .konan/dependencies
           key: ic-dependencies-${{ matrix.platform }}-${{ hashFiles('configs/compilers-ci.yaml', 'configs/ic-sample-*.yaml') }}
-      - name: Download official Native compiler
-        env:
-          NATIVE_PLATFORM: ${{ matrix.native_platform }}
-        run: |
-          version=$(.venv/bin/python -c "import yaml; print(yaml.safe_load(open('configs/compilers-ci.yaml'))['compilers']['baseline']['kotlin_version'])")
-          curl --fail --location --retry 3 "https://github.com/JetBrains/kotlin/releases/download/v${version}/kotlin-native-prebuilt-${NATIVE_PLATFORM}-${version}.tar.gz" --output configs/ci-native.tar.gz
       - name: Run unit tests
         run: .venv/bin/python -m pytest -q
       - name: Replay IC sample
