@@ -5,5 +5,6 @@ start_commit: 0e606e24c07a817c95a03ab37dcf0c7e5776b788
 end_commit: f4bc779828444dcb149b3102f9dd2a3f8001baad
 direction: forward
 task: :ohosApp:linkDebugSharedOhosArm64
+# This range requires a macOS arm64 host: its OpenSSL script selects macOS LLVM.
 # Requires the project Rust toolchain and @cpf-kmp-cmp/compose native libraries in each worktree.
 # Export WORKBENCH_OHOS_CC, WORKBENCH_OHOS_LLVM and WORKBENCH_OHOS_SYSROOT for the OHOS SDK.
