@@ -21,7 +21,8 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["debug_ic_fuzzer", "ic_config", "ic_build", "ic_results"]
+py-modules = ["debug_ic_fuzzer"]
+packages = ["impl"]
 
 [tool.setuptools.data-files]
 "share/debug-ic-fuzzer" = ["capture.init.gradle"]

@@ -1,7 +1,0 @@
-compilers:
-  baseline:
-    kotlin_version: "2.4.21"              # 覆盖插件和版本目录的 kotlin 项，不改项目文件。
-    kotlin_native_home: "./baseline.tgz"   # 目录或 .tgz；相对本配置；包独立解压到 /tmp。
-  sut:
-    kotlin_version: "2.4.21"
-    kotlin_native_home: "./sut.tgz"        # 目录不得与 baseline 共用缓存。

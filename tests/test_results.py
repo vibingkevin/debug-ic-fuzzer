@@ -1,6 +1,6 @@
 import hashlib
 
-from ic_results import Store, differences, normalized
+from impl.results import Store, differences, normalized
 
 
 def test_text_dedup_binary_and_mtime(tmp_path):
