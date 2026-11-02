@@ -52,24 +52,38 @@ def is_within_directory(candidate_path: Path, parent_directory: Path) -> bool:
     return candidate_path.resolve().is_relative_to(parent_directory.resolve())
 
 
-def collect_cache_files(cache_roots: list[tuple[Path, str]], store_directory: Path) -> list[dict]:
-    """Snapshot cache files without interpreting builds or task states.
+def collect_cache_files(build_result: dict, store_directory: Path) -> list[dict]:
+    """Read the compiler's built-cache report and snapshot only its reported cache units.
 
     Args:
-        cache_roots: Report-selected (cache unit directory, recorded path prefix) pairs to scan recursively.
+        build_result: Current link report, exit status, cwd, Native home, and variant name.
         store_directory: Shared content store for normalized metadata.properties and bitcode_deps.
 
+    Set build_result's rebuilt_cache_count from unique reported archive paths before scanning.
     Return file records with paths, MD5s, and mtimes. Other files are hashed without
-    saving contents; missing roots contribute no files, and symbolic links are rejected.
+    saving contents. Failed builds may have no report; successful links must write one.
+    Known directory prefixes normalize recorded paths without limiting collection scope.
     """
+    link = build_result["link"]
+    if link is None:
+        return []
+    report = Path(link["built_caches"])
+    if not report.exists() and build_result["exit_code"] != 0:
+        return []
+    rebuilt_archives = {Path(archive) for archive in report.read_text().splitlines() if archive}
+    build_result["rebuilt_cache_count"] = len(rebuilt_archives)
+    cache_directories = sorted({archive.parent.parent for archive in rebuilt_archives})
+    project_directory = Path(build_result["cwd"])
+    path_prefixes = [(project_directory, "project"), (project_directory.parent / f"{build_result['variant']}-auto-cache", "auto-cache"), (Path(build_result["native_home"]), "native-home")]
     files = []
-    for root, logical in cache_roots:
-        if root.is_symlink():
-            raise ValueError(f"Cache root symlinks are unsupported: {root}")
-        for path in sorted(root.rglob("*")):
-            if path.is_symlink():
-                raise ValueError(f"Cache symlinks are unsupported: {path}")
+    for cache_directory in cache_directories:
+        recorded_directory = cache_directory
+        for directory, prefix in path_prefixes:
+            if cache_directory.is_relative_to(directory):
+                recorded_directory = Path(prefix) / cache_directory.relative_to(directory)
+                break
+        for path in sorted(cache_directory.rglob("*")):
             if path.is_file():
                 text = path.name in CACHE_TEXT
-                files.append(snapshot_file(path, str(Path(logical) / path.relative_to(root)), store_directory if text else None, normalize_text=text))
+                files.append(snapshot_file(path, str(recorded_directory / path.relative_to(cache_directory)), store_directory if text else None, normalize_text=text))
     return files

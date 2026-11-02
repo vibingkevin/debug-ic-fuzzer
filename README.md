@@ -46,14 +46,21 @@ If only one link is UP-TO-DATE, save the executed side's products, record an exe
 Production differences or collection errors stop replay; differences only in the unstripped product do not.
 Missing files are differences. Compiler caches are collected, not compared during replay.
 
+After replay finishes or stops on a failed pair, `impl/summary.py` writes `summary.csv` from the JSON records and Git history.
+Columns: `commit`, `changed_files`, `added_lines`, `deleted_lines`, `strict_equal`, `production_equal`,
+`baseline_seconds`, `sut_seconds`, `baseline_rebuilt_caches`, `sut_rebuilt_caches`.
+Changes are relative to the commit's first parent (empty tree for the initial commit), including in reverse replay.
+Binary files count as changed files but contribute no lines; renames count as deletion plus addition.
+Rebuilt counts are unique archive paths in the compiler report, recorded as `rebuilt_cache_count` before collection.
+UP-TO-DATE counts as zero rebuilds; unknown counts and unperformed comparisons are blank. Durations are seconds.
+
 Collection and comparison:
 
 - `cache_files`: collect only cache units listed in the current `-Xdump-built-caches-to` report.
   Each reported `<cache-unit>/bin/*.a` selects its containing cache-unit directory, including metadata and IR; duplicate directories are scanned once.
   For per-file caches this selects only the rebuilt file's unit, not its unchanged siblings; monolithic caches select the whole library unit.
-  The IC, auto-cache, and compiler `klib/cache` roots are allowed boundaries, not full scan targets.
   An empty report records `[]`; UP-TO-DATE records null. Missing reports after failed builds do not trigger a fallback scan.
-  Record `path`, `md5`, and `mtime_ns`. Paths start with `project/`, `auto-cache/`, or `native-home/`, never baseline/sut.
+  Record `path`, `md5`, and `mtime_ns`. Known paths use `project/`, `auto-cache/`, or `native-home/` prefixes; other reported paths remain absolute.
 - Cache `metadata.properties` and `bitcode_deps` are saved after converting line endings to LF and stripping surrounding whitespace.
   Remove `compilerFingerprint` from metadata before hashing and saving. Cache `.a`, IR, and other files are hashed as bytes but not saved.
 - `artifacts`: inspect the final Linux product directory (`.kexe`, or `.so` plus its generated `.h`).
@@ -65,8 +72,6 @@ Collection and comparison:
   Equal products retain both hashes without saving contents. Temporary production views are always deleted.
 - Saved contents are deduplicated immediately in `store/<filename>/<filename>-<md5>` shared by the run.
   Records do not repeat the derived store path. Cache archive contents are not retained for historical inspection; replay to reproduce them.
-- The compiler's built-cache report checks actual archive paths against the three tracked cache roots.
-  External cache overrides, escaping paths and cache/product symlinks are rejected.
 
 Strip errors are recorded and stop replay. A production difference is a comparison failure, not proof of a compiler bug.
 Sources and outputs remain in their worktrees. `repos/` and `run/` are ignored by Git.
@@ -85,10 +90,9 @@ They do not collect existing outputs or reuse metadata from previous commits.
 Execution-state mismatch is a test failure requiring investigation, not proof of a compiler bug.
 
 `debug_ic_fuzzer.py` coordinates both variants. `impl/config.py` handles configuration and distributions;
-`impl/repository.py` prepares repositories; `impl/build.py` runs Gradle, parses the completed log once,
-and resolves cache paths for executed links.
-`impl/validation.py` checks link results, cache boundaries, and the current invocation's built-cache report.
-`impl/collection.py` only accepts directories and a store, then snapshots files; it does not read build logs or task states.
+`impl/repository.py` prepares repositories; `impl/build.py` runs Gradle and parses the completed log once.
+`impl/validation.py` checks link results.
+`impl/collection.py` reads the current built-cache report and snapshots its reported cache directories.
 `impl/comparison.py` collects product hashes and compares records.
 Both collectors run inside `project`; each build JSON is written once before the worktree moves back.
 `build_project` groups project directory/config, compiler config/home/auto-cache, and the log stem.

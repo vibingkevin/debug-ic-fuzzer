@@ -94,6 +94,7 @@ def compare_products(variant_results: dict) -> dict:
         if all(up_to_date):
             return dict(strict_equal=None, production_equal=None, skipped="Both Native links are UP-TO-DATE")
         save_product_contents(variant_results)
+        # expect UP-TO-DATE status for 2 variants to be the same
         return {"error": "Native link execution states differ: only one variant is UP-TO-DATE"}
     baseline, sut = ({f["path"]: f for f in variant_results[name]["artifacts"]} for name in ("baseline", "sut"))
     missing = baseline.keys() ^ sut.keys()

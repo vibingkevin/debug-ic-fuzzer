@@ -6,7 +6,6 @@ import pytest
 
 from impl.collection import collect_cache_files
 from impl.comparison import collect_product_hashes, compare_products, save_product_contents
-from impl.validation import validate_cache_paths
 
 
 @pytest.fixture
@@ -107,50 +106,30 @@ def test_cache_snapshot_normalization_dedup_and_no_binary_contents(tmp_path):
     root.mkdir(parents=True)
     metadata = root / "metadata.properties"
     metadata.write_bytes(b" hash=abc\r\ncompilerFingerprint=old\r\n")
-    archive = root / "code.a"
+    (root / "bin").mkdir()
+    archive = root / "bin/code.a"
     archive.write_bytes(b"archive")
     (root / "inline_bodies").write_bytes(b"\x00\x01")
     native = tmp_path / "native/klib/cache"
     native.mkdir(parents=True)
     (native / "bitcode_deps").write_text("stdlib\n")
-    roots = [(root, "project/build/ic"), (native, "native-home/klib/cache")]
-    files = collect_cache_files(roots, tmp_path / "store")
+    (native / "bin").mkdir()
+    native_archive = native / "bin/stdlib.a"
+    native_archive.write_bytes(b"stdlib")
+    report = tmp_path / "built-caches.txt"
+    report.write_text(f"{archive}\n{native_archive}\n")
+    record = dict(cwd=str(tmp_path / "project"), native_home=str(tmp_path / "native"), variant="baseline", exit_code=0, link={"built_caches": str(report)})
+    files = collect_cache_files(record, tmp_path / "store")
     first = next(f for f in files if f["path"].endswith("metadata.properties"))
     metadata.write_text("hash=abc\ncompilerFingerprint=new\n")
-    files = collect_cache_files(roots, tmp_path / "store")
+    files = collect_cache_files(record, tmp_path / "store")
     second = next(f for f in files if f["path"].endswith("metadata.properties"))
     assert first["md5"] == second["md5"]
     assert len(list((tmp_path / "store/metadata.properties").iterdir())) == 1
     assert not (tmp_path / "store/code.a").exists()
     assert not (tmp_path / "store/inline_bodies").exists()
-    assert len(files) == 4
+    assert len(files) == 5
     assert all(f["path"].startswith(("project/", "native-home/")) for f in files)
-
-
-@pytest.mark.parametrize("escape", ["ic", "auto", "archive", "symlink"])
-def test_cache_boundary_errors(tmp_path, escape):
-    """Check cache boundary rejection in tmp_path; escape selects an IC, override, archive, or symlink case."""
-    (tmp_path / "project/build/ic").mkdir(parents=True)
-    record = dict(cwd=str(tmp_path / "project"), native_home=str(tmp_path / "native"), link={"ic_cache_dir": str(tmp_path / "project/build/ic")}, exit_code=0)
-    cache_paths = []
-    report = None
-    if escape == "ic":
-        record["link"]["ic_cache_dir"] = str(tmp_path / "outside")
-    elif escape == "auto":
-        cache_paths = [str(tmp_path / "outside")]
-    elif escape == "archive":
-        report = str(tmp_path / "project/build/built.txt")
-        Path(report).write_text(str(tmp_path / "outside.a"))
-    else:
-        (tmp_path / "outside.a").touch()
-        cache_bin = tmp_path / "project/build/ic/unit/bin"
-        cache_bin.mkdir(parents=True)
-        (cache_bin / "escape.a").symlink_to(tmp_path / "outside.a")
-        report = str(tmp_path / "project/build/built.txt")
-        Path(report).write_text(str(cache_bin / "escape.a"))
-    with pytest.raises(ValueError, match="outside|symlink"):
-        roots = validate_cache_paths(record, tmp_path / "baseline-auto-cache", cache_paths, report)
-        collect_cache_files(roots, tmp_path / "store")
 
 
 def test_strip_error_retains_hashes_and_can_save_after_restore(tmp_path, product_records, monkeypatch):
@@ -197,12 +176,12 @@ def test_up_to_date_comparison(tmp_path, product_records, skipped_variants):
 
 
 def test_only_reported_cache_units_are_collected(tmp_path):
-    """Select reported units from all three roots in tmp_path, excluding unchanged sibling caches."""
+    """Select only reported units in tmp_path, including external paths and excluding unchanged siblings."""
     project = tmp_path / "project"
     compiler = tmp_path / "compiler"
-    boundaries = [tmp_path / "baseline-auto-cache", project / "module/build/ic", compiler / "klib/cache"]
+    cache_locations = [tmp_path / "baseline-auto-cache", project / "module/build/ic", compiler / "klib/cache", tmp_path / "external-cache"]
     reported_archives = []
-    for root in boundaries:
+    for root in cache_locations:
         for unit in ("changed", "unchanged"):
             cache = root / unit
             (cache / "bin").mkdir(parents=True)
@@ -213,19 +192,20 @@ def test_only_reported_cache_units_are_collected(tmp_path):
                 reported_archives.append(archive)
     report = project / "module/build/built-caches.txt"
     report.write_text("\n".join(str(path) for path in [*reported_archives, reported_archives[0]]))
-    record = dict(cwd=str(project), native_home=str(compiler), exit_code=0, link={"ic_cache_dir": str(boundaries[1])})
-    roots = validate_cache_paths(record, boundaries[0], [str(boundaries[0])], str(report))
-    assert {root for root, _ in roots} == {archive.parent.parent for archive in reported_archives}
-    records = collect_cache_files(roots, tmp_path / "store")
-    assert len(records) == 6
+    record = dict(cwd=str(project), native_home=str(compiler), variant="baseline", exit_code=0, link={"built_caches": str(report)})
+    records = collect_cache_files(record, tmp_path / "store")
+    assert record["rebuilt_cache_count"] == 4
+    assert len(records) == 8
     assert all("/changed/" in entry["path"] for entry in records)
     assert any(entry["path"].startswith("native-home/") for entry in records)
     assert any(entry["path"].startswith("auto-cache/") for entry in records)
     assert any(entry["path"].startswith("project/module/build/ic/") for entry in records)
+    assert any(entry["path"].startswith(str(tmp_path / "external-cache")) for entry in records)
     report.write_text("")
-    assert validate_cache_paths(record, boundaries[0], [], str(report)) == []
+    assert collect_cache_files(record, tmp_path / "store") == []
+    assert record["rebuilt_cache_count"] == 0
     report.unlink()
-    with pytest.raises(ValueError, match="did not write"):
-        validate_cache_paths(record, boundaries[0], [], str(report))
+    with pytest.raises(FileNotFoundError):
+        collect_cache_files(record, tmp_path / "store")
     record["exit_code"] = 1
-    assert validate_cache_paths(record, boundaries[0], [], str(report)) == []
+    assert collect_cache_files(record, tmp_path / "store") == []

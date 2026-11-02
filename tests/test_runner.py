@@ -151,7 +151,7 @@ sys.exit(7 if home.endswith('fail') else 0)
     for name, home in [("baseline", Path("/compiler/fail")), ("sut", Path("/downloaded"))]:
         compiler = Compiler(kotlin_version="2.4.21", kotlin_native_home=home if name == "baseline" else None)
         with activate_worktree(repository, run_directory / name, first) as active:
-            result, _ = build_project(active, project, compiler, home, run_directory / f"{name}-auto-cache", f"0000-{first[:12]}-{name}")
+            result = build_project(active, project, compiler, home, run_directory / f"{name}-auto-cache", f"0000-{first[:12]}-{name}")
         assert result["exit_code"] == (7 if name == "baseline" else 0)
         assert result["error"] is None
         assert result["log"] == f"0000-{first[:12]}-{name}.gradle.log"
@@ -201,6 +201,7 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     monkeypatch.setattr(runner, "load_config", lambda path, model: compilers if model is Compilers else project)
     monkeypatch.setattr(runner, "resolve_native_home", lambda *_: Path("/shared-compiler"))
     monkeypatch.setattr(runner, "prepare_repository", lambda *_: (tmp_path / "repo", ["a", "b", "c"]))
+    monkeypatch.setattr("impl.summary.read_commit_change_stats", lambda *_: dict(changed_files=1, added_lines=2, deleted_lines=1))
     created, calls, collected, saved = [], [], [], []
     active = False
 
@@ -235,19 +236,19 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
         assert project_config.gradle_args == [f"-Pfixture={tmp_path}/fixture"]
         (project_directory.parent / f"{record_stem}.gradle.log").write_text("completed")
         skipped = commit_id == "b" and failure in ("both-up-to-date", f"{variant}-up-to-date")
-        return dict(cwd=str(project_directory), exit_code=int(commit_id == "b" and variant == failure), error=None, task_state="UP-TO-DATE" if skipped else "EXECUTED", link=None if skipped else {"task": ":app:link"}), []
+        return dict(cwd=str(project_directory), exit_code=int(commit_id == "b" and variant == failure), error=None, task_state="UP-TO-DATE" if skipped else "EXECUTED", link=None if skipped else {"task": ":app:link"})
 
     monkeypatch.setattr(runner, "build_project", fake_build_project)
 
-    def fake_collect_cache_files(cache_roots, store_directory):
+    def fake_collect_cache_files(build_result, store_directory):
         """Check active collection and inject the selected cache failure.
 
-        cache_roots and store_directory are unused inputs matching collect_cache_files.
+        build_result and store_directory are unused inputs matching collect_cache_files.
         """
         assert active
         collected.append(calls[-1])
         if failure == "collection" and calls[-1] == ("b", "baseline"):
-            raise ValueError("Cache is outside the project")
+            raise ValueError("Cache file cannot be read")
         return []
 
     def fake_collect_product_hashes(build_result):
@@ -274,6 +275,7 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     assert calls == [(sha, name) for sha in revisions for name in ("baseline", "sut")]
     (run_directory,) = (tmp_path / "run").iterdir()
     assert len(list(run_directory.glob("*.json"))) == len(calls) + len(revisions)
+    assert (run_directory / "summary.csv").is_file()
     for index, sha in enumerate(revisions):
         for name in ("baseline", "sut"):
             record_name = f"{index:04d}-{sha}-{name}"
@@ -318,11 +320,10 @@ def test_task_state_without_link(tmp_path, monkeypatch, task_line, expected_stat
     monkeypatch.setattr(builder.subprocess, "run", fake_gradle)
     (tmp_path / "project").mkdir()
     project = Project(repository="https://example.test/project.git", branch="main", start_commit="a", end_commit="b", task=":app:link")
-    result, cache_roots = build_project(tmp_path / "project", project, Compiler(kotlin_version="2.4.21"), Path("/compiler"), tmp_path / "baseline-auto-cache", "0001-b-baseline")
+    result = build_project(tmp_path / "project", project, Compiler(kotlin_version="2.4.21"), Path("/compiler"), tmp_path / "baseline-auto-cache", "0001-b-baseline")
     assert result["task_state"] == expected_state
     assert result["link"] is None
     if error is None:
         assert result["error"] is None
-        assert cache_roots == []
     else:
         assert error in result["error"]
