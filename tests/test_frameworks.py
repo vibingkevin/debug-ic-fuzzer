@@ -74,7 +74,6 @@ def test_framework_comparison(tmp_path, static, change):
             content[24:36] = b"1234567890  "
             binary.write_bytes(content)
         else:
-            subprocess.run(["codesign", "--remove-signature", str(binary)], check=True, capture_output=True)
             macho = MachO(str(binary))
             with binary.open("r+b") as output:
                 for header in macho.headers:
@@ -84,8 +83,6 @@ def test_framework_comparison(tmp_path, static, change):
                             output.seek(command_offset + sizeof(command))
                             output.write(b"x" * 16)
                         command_offset += command.cmdsize
-            # Older Xcode strip rejects the LINKEDIT gap left by signature removal.
-            subprocess.run(["codesign", "--force", "--sign", "-", str(binary)], check=True, capture_output=True)
     original_contents = (sut / "Sample").read_bytes()
     results = {}
     for variant in ("baseline", "sut"):
