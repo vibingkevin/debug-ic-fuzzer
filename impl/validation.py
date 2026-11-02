@@ -3,7 +3,7 @@
 from pathlib import Path
 
 
-def validate_result(result: dict, variant_directory: Path) -> str | None:
+def validate_result(result: dict) -> str | None:
     if result["exit_code"] != 0:
         return None
     if result["task_state"] == "FROM-CACHE":
@@ -17,6 +17,6 @@ def validate_result(result: dict, variant_directory: Path) -> str | None:
     build_directory = Path(result["cwd"])
     if not output.is_relative_to(build_directory):
         return "Final output is outside the project"
-    if not (variant_directory / output.relative_to(build_directory)).exists():
+    if not output.exists():
         return "Final output does not exist"
     return None

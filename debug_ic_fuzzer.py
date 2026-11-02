@@ -11,9 +11,9 @@ import yaml
 
 from impl.build import build
 from impl.collection import collect
-from impl.comparison import compare
+from impl.comparison import collect_products, compare, save_artifacts
 from impl.config import Compilers, Project, load, prepare_home
-from impl.repository import prepare_repository, create_worktree
+from impl.repository import prepare_repository, create_worktree, checkout_worktree
 
 
 def run(compilers_path: Path, project_path: Path) -> int:
@@ -36,26 +36,28 @@ def run(compilers_path: Path, project_path: Path) -> int:
             results = {}
             for name in ('baseline', 'sut'):
                 record_name = f'{index:04d}-{revision[:12]}-{name}'
-                result = build(repository, destination, name, revision, project, compilers[name],
-                               homes[name], project_path.parent, record_name, last_links[name])
-                try:
-                    collect(result, destination)
-                except (ValueError, OSError) as error:
-                    result['error'] = result['error'] or str(error)
-                results[name] = result
-                (destination / f'{record_name}.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
+                with checkout_worktree(repository, destination / name, revision) as project_directory:
+                    result = build(project_directory, destination, name, revision, project, compilers[name],
+                                   homes[name], project_path.parent, record_name, last_links[name])
+                    try:
+                        collect(result, destination)
+                        if result['exit_code'] == 0 and result['error'] is None:
+                            collect_products(result, destination)
+                    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+                        result['error'] = result['error'] or str(error)
+                    results[name] = result
+                    (destination / f'{record_name}.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
                 failed |= result['exit_code'] != 0 or result['error'] is not None
                 last_links[name] = result['link']
                 print(f"{index:04d} {revision[:12]} {name}: exit={result['exit_code']} error={result['error']}", flush=True)
             comparison = {"error": "Build or collection failed"}
-            if not failed:
-                try:
+            try:
+                if failed:
+                    save_artifacts(results, destination)
+                else:
                     comparison = compare(results, destination)
-                except (ValueError, OSError, subprocess.CalledProcessError) as error:
-                    comparison = {"error": str(error)}
-            for name, result in results.items():
-                (destination / f'{index:04d}-{revision[:12]}-{name}.json').write_text(
-                    json.dumps(result, ensure_ascii=False, indent=2) + '\n')
+            except (ValueError, OSError) as error:
+                comparison = {"error": str(error)}
             (destination / f'{index:04d}-{revision[:12]}-comparison.json').write_text(
                 json.dumps(comparison, indent=2) + '\n')
             print(f"{index:04d} comparison: {comparison}", flush=True)

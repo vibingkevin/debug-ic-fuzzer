@@ -1,4 +1,4 @@
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import io
 import json
 from pathlib import Path
@@ -110,7 +110,8 @@ sys.exit(7 if home.endswith('fail') else 0)
         create_worktree(repository, destination / name, sha)
     for name, home in [('baseline', Path('/compiler/fail')), ('sut', Path('/downloaded'))]:
         compiler = Compiler(kotlin_version='2.4.21', kotlin_native_home=home if name == 'baseline' else None)
-        result = build(repository, destination, name, first, project, compiler, home, tmp_path, f'0000-{first[:12]}-{name}')
+        with checkout_worktree(repository, destination / name, first) as active:
+            result = build(active, destination, name, first, project, compiler, home, tmp_path, f'0000-{first[:12]}-{name}')
         assert result['exit_code'] == (7 if name == 'baseline' else 0)
         assert result['error'] is None
         assert result['log'] == f'0000-{first[:12]}-{name}.gradle.log'
@@ -152,9 +153,22 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     monkeypatch.setattr(runner, 'prepare_home', lambda compiler, *_: Path('/baseline') if compiler is compilers.compilers['baseline'] else Path('/sut'))
     monkeypatch.setattr(runner, 'prepare_repository', lambda *_: (tmp_path / 'repo', ['a', 'b', 'c']))
     created, calls = [], []
+    active = False
+
+    @contextmanager
+    def checkout(repo, directory, revision):
+        nonlocal active
+        active = True
+        try:
+            yield directory.parent / 'project'
+        finally:
+            active = False
+
+    monkeypatch.setattr(runner, 'checkout_worktree', checkout)
     monkeypatch.setattr(runner, 'create_worktree', lambda repo, path, sha: created.append((path.name, sha)))
 
     def fake_build(repo, destination, name, revision, project, compiler, home, config_dir, record_name, last_link):
+        assert active
         calls.append((revision, name))
         assert last_link == (None if revision == 'a' else {'task': ':app:link'})
         (destination / f'{record_name}.gradle.log').write_text('completed')
@@ -163,14 +177,18 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
 
     monkeypatch.setattr(runner, 'build', fake_build)
     def collect_result(result, destination):
+        assert active
         if failure == 'collection' and result['commit'] == 'b' and result['variant'] == 'baseline':
             raise ValueError('Cache is outside the project')
 
     def compare_results(results, destination):
+        assert not active
         changed = failure in ('production', 'debug') and results['baseline']['commit'] == 'b'
         return dict(strict_equal=not changed, production_equal=not (changed and failure == 'production'))
 
     monkeypatch.setattr(runner, 'collect', collect_result)
+    monkeypatch.setattr(runner, 'collect_products', collect_result)
+    monkeypatch.setattr(runner, 'save_artifacts', lambda *_: None)
     monkeypatch.setattr(runner, 'compare', compare_results)
     assert run(tmp_path / 'compilers.yaml', tmp_path / 'project.yaml') == int(failure not in (None, 'debug'))
     assert created == [('baseline', 'a'), ('sut', 'a')]
@@ -196,23 +214,18 @@ def test_skipped_link(tmp_path, monkeypatch, state, previous, output, valid):
     import importlib
     builder = importlib.import_module('impl.build')
 
-    @contextmanager
-    def checkout(*_):
-        yield tmp_path / 'project'
-
     def gradle(command, cwd, stdout, **kwargs):
         stdout.write(f'> Task :app:link {state}\n')
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(builder, 'checkout_worktree', checkout)
     monkeypatch.setattr(builder.subprocess, 'run', gradle)
-    (tmp_path / 'baseline').mkdir()
+    (tmp_path / 'project').mkdir()
     if output:
-        (tmp_path / 'baseline/app.kexe').touch()
+        (tmp_path / 'project/app.kexe').touch()
     link = dict(home='/compiler', output=str(tmp_path / 'project/app.kexe'))
     project = Project(repository='https://example.test/project.git', branch='main',
                       start_commit='a', end_commit='b', task=':app:link')
-    result = build(tmp_path, tmp_path, 'baseline', 'b', project, Compiler(kotlin_version='2.4.21'),
+    result = build(tmp_path / 'project', tmp_path, 'baseline', 'b', project, Compiler(kotlin_version='2.4.21'),
                    Path('/compiler'), tmp_path, '0001-b-baseline', link if previous else None)
     assert (result['error'] is None) == valid
     assert result['task_state'] == state

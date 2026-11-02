@@ -5,7 +5,7 @@ import subprocess
 import pytest
 
 from impl.collection import collect
-from impl.comparison import compare
+from impl.comparison import collect_products, compare, save_artifacts
 
 
 @pytest.fixture
@@ -25,7 +25,22 @@ def products(tmp_path):
     return results
 
 
+def collect_pair(results, destination):
+    for name, result in results.items():
+        active = destination / 'project'
+        parked = destination / name
+        parked.rename(active)
+        try:
+            collect_products(result, destination)
+        finally:
+            active.rename(parked)
+
+
 def test_equal_products_keep_hashes_without_contents(tmp_path, products):
+    collect_pair(products, tmp_path)
+    # Equal results need no access to the parked products.
+    shutil.rmtree(tmp_path / 'baseline')
+    shutil.rmtree(tmp_path / 'sut')
     assert compare(products, tmp_path) == dict(strict_equal=True, production_equal=True)
     assert not (tmp_path / "store").exists()
     for result in products.values():
@@ -57,6 +72,7 @@ def test_product_differences(tmp_path, products, change):
         (output.parent / 'libdemo_api.h').write_text('long value(void);\n')
     else:
         (output.parent / 'extra.h').write_text('int extra(void);\n')
+    collect_pair(products, tmp_path)
     result = compare(products, tmp_path)
     assert result['strict_equal'] is False
     assert result['production_equal'] == (change in ('debug', 'build-id'))
@@ -71,13 +87,14 @@ def test_product_differences(tmp_path, products, change):
 
 def test_header_whitespace_is_nonblocking_but_originals_are_saved(tmp_path, products):
     (tmp_path / 'sut/build/libdemo_api.h').write_bytes(b' \r\nint value(void);\r\n')
+    collect_pair(products, tmp_path)
     result = compare(products, tmp_path)
     assert not result['strict_equal'] and result['production_equal']
     assert len(list((tmp_path / 'store/libdemo_api.h').iterdir())) == 2
 
 
 def test_cache_snapshot_normalization_dedup_and_no_binary_contents(tmp_path):
-    root = tmp_path / 'baseline/build/ic'
+    root = tmp_path / 'project/build/ic'
     root.mkdir(parents=True)
     metadata = root / 'metadata.properties'
     metadata.write_bytes(b' hash=abc\r\ncompilerFingerprint=old\r\n')
@@ -110,7 +127,7 @@ def test_cache_snapshot_normalization_dedup_and_no_binary_contents(tmp_path):
 
 @pytest.mark.parametrize('escape', ['ic', 'auto', 'archive', 'symlink'])
 def test_cache_boundary_errors(tmp_path, escape):
-    (tmp_path / 'baseline/build/ic').mkdir(parents=True)
+    (tmp_path / 'project/build/ic').mkdir(parents=True)
     record = dict(variant='baseline', cwd=str(tmp_path / 'project'), native_home=str(tmp_path / 'native'),
                   link={}, task_state='EXECUTED', exit_code=0, log='gradle.log')
     log = f'-Xic-cache-dir={tmp_path}/project/build/ic\n'
@@ -120,24 +137,24 @@ def test_cache_boundary_errors(tmp_path, escape):
         log += f'-Xauto-cache-dir={tmp_path}/outside\n'
     elif escape == 'archive':
         record['link']['built_caches'] = str(tmp_path / 'project/build/built.txt')
-        (tmp_path / 'baseline/build/built.txt').write_text(str(tmp_path / 'outside.a'))
+        (tmp_path / 'project/build/built.txt').write_text(str(tmp_path / 'outside.a'))
     else:
         (tmp_path / 'outside.a').touch()
-        (tmp_path / 'baseline/build/ic/escape.a').symlink_to(tmp_path / 'outside.a')
+        (tmp_path / 'project/build/ic/escape.a').symlink_to(tmp_path / 'outside.a')
     (tmp_path / 'gradle.log').write_text(log)
     with pytest.raises(ValueError, match='outside|symlink'):
         collect(record, tmp_path)
 
 
-def test_strip_error_keeps_both_originals(tmp_path, products, monkeypatch):
-    (tmp_path / 'sut/build/libdemo_api.h').write_text('long value(void);\n')
+def test_strip_error_retains_hashes_and_can_save_after_restore(tmp_path, products, monkeypatch):
     def fail(*_):
         raise OSError('strip unavailable')
     monkeypatch.setattr('impl.comparison.production_digest', fail)
     with pytest.raises(OSError, match='strip unavailable'):
-        compare(products, tmp_path)
-    assert all(len(result['artifacts']) == 2 for result in products.values())
-    for result in products.values():
-        for f in result['artifacts']:
-            name = Path(f['path']).name
-            assert (tmp_path / 'store' / name / f"{name}-{f['md5']}").is_file()
+        collect_pair(products, tmp_path)
+    assert not (tmp_path / 'project').exists()
+    assert len(products['baseline']['artifacts']) == 2
+    save_artifacts(products, tmp_path)
+    for f in products['baseline']['artifacts']:
+        name = Path(f['path']).name
+        assert (tmp_path / 'store' / name / f"{name}-{f['md5']}").is_file()

@@ -1,7 +1,6 @@
 """Compare final products; keep platform-specific normalization in one function."""
 
 from pathlib import Path
-import filecmp
 import hashlib
 import subprocess
 import tempfile
@@ -9,11 +8,10 @@ import tempfile
 from impl.collection import inside, normalized_text, snapshot
 
 
-def products(result: dict, destination: Path) -> dict[str, Path]:
+def products(result: dict) -> dict[str, Path]:
     project = Path(result["cwd"])
-    parked = destination / result["variant"]
-    output = parked / Path(result["link"]["output"]).relative_to(project)
-    if not inside(output, parked) or not output.is_file():
+    output = Path(result["link"]["output"])
+    if not inside(output, project) or not output.is_file():
         raise ValueError("Expected a Linux product file inside the project")
     with output.open("rb") as stream:
         if stream.read(4) != b"\x7fELF":
@@ -23,7 +21,7 @@ def products(result: dict, destination: Path) -> dict[str, Path]:
         if path.is_symlink():
             raise ValueError(f"Product symlinks are unsupported: {path}")
         if path.is_file():
-            files[str(Path("project") / path.relative_to(parked))] = path
+            files[str(Path("project") / path.relative_to(project))] = path
     if output.suffix == ".so" and not any(p.suffix == ".h" for p in files.values()):
         raise ValueError("The shared library's generated header is missing")
     return files
@@ -43,32 +41,33 @@ def production_digest(path: Path, temporary: Path) -> str:
         return hashlib.file_digest(stream, "md5").hexdigest()
 
 
-def compare(results: dict, destination: Path) -> dict:
-    files = {name: products(result, destination) for name, result in results.items()}
-    baseline, sut = files["baseline"], files["sut"]
-    filecmp.clear_cache()
-    missing = sorted(baseline.keys() ^ sut.keys())
-    changed = sorted(path for path in baseline.keys() & sut.keys()
-                     if not filecmp.cmp(baseline[path], sut[path], shallow=False))
-    strict_equal = not missing and not changed
-    # Hash both views every time; save original contents only when strict comparison differs.
-    for name, result in results.items():
-        result["artifacts"] = [snapshot(path, logical, destination / "store", save=not strict_equal)
-                               for logical, path in files[name].items()]
+def collect_products(result: dict, destination: Path):
+    files = products(result)
+    result["artifacts"] = [snapshot(path, logical, destination / "store", save=False)
+                           for logical, path in files.items()]
     with tempfile.TemporaryDirectory(prefix="ic-compare-") as temporary:
-        digests = {}
-        for name, result in results.items():
-            for entry in result["artifacts"]:
-                path = files[name][entry["path"]]
-                key = (path.suffix, entry["md5"])
-                if key not in digests:
-                    digests[key] = production_digest(path, Path(temporary))
-                entry["production_md5"] = digests[key]
-    hashes = {name: {f["path"]: f["production_md5"] for f in result["artifacts"]}
-              for name, result in results.items()}
-    production_diff = sorted(missing + [path for path in changed
-                                       if hashes["baseline"][path] != hashes["sut"][path]])
-    comparison = dict(strict_equal=strict_equal, production_equal=not production_diff)
-    if not strict_equal:
-        comparison.update(strict_diff=sorted(missing + changed), production_diff=production_diff)
+        for entry in result["artifacts"]:
+            entry["production_md5"] = production_digest(files[entry["path"]], Path(temporary))
+
+
+def save_artifacts(results: dict, destination: Path):
+    # This is the only place that resolves recorded paths after the worktrees move back.
+    for name, result in results.items():
+        for entry in result.get("artifacts", []):
+            path = destination / name / Path(entry["path"]).relative_to("project")
+            snapshot(path, entry["path"], destination / "store", save=True)
+
+
+def compare(results: dict, destination: Path) -> dict:
+    baseline, sut = ({f["path"]: f for f in results[name]["artifacts"]}
+                     for name in ("baseline", "sut"))
+    missing = baseline.keys() ^ sut.keys()
+    common = baseline.keys() & sut.keys()
+    strict_diff = sorted(missing | {p for p in common if baseline[p]["md5"] != sut[p]["md5"]})
+    production_diff = sorted(missing | {p for p in common
+                                       if baseline[p]["production_md5"] != sut[p]["production_md5"]})
+    comparison = dict(strict_equal=not strict_diff, production_equal=not production_diff)
+    if strict_diff:
+        save_artifacts(results, destination)
+        comparison.update(strict_diff=strict_diff, production_diff=production_diff)
     return comparison

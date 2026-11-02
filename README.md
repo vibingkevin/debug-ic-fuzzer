@@ -27,8 +27,9 @@ Each run:
 1. Clone or update the shared bare repository in `repos/`.
 2. Create `run/<compiler-config>-<project-config>-<timestamp>/` and two independent worktrees at the first commit in replay order.
    The timestamp uses `YYYYMMDD-HHMMSS`; an existing directory is an error.
-3. Move baseline to `project` with `git worktree move`, check out the requested commit, run the Gradle task, and move it back even on failure.
-4. Collect baseline caches, repeat for sut, then compare final products before advancing to the next commit.
+3. Move baseline to `project`, check out the commit, run Gradle, parse the log, validate, collect caches and product hashes, and write its JSON.
+   Only then move it back; failures also restore the worktree.
+4. Repeat for sut, then compare the collected records before advancing to the next commit.
    Retain both worktrees' build outputs and caches.
    Write logs directly to files and read them only after the build finishes.
 
@@ -52,7 +53,8 @@ Collection and comparison:
   Each file records `path`, raw `md5`, `production_md5`, and `mtime_ns`.
   The production view strips ELF symbols/debug information and removes `.note.gnu.build-id`; headers use normalized text.
   Other output files use their original bytes. The original files are never modified.
-- Compare original products byte for byte first. Save both variants' original product contents only if strict comparison differs.
+- Compare file sets and raw MD5s for strict equality, and production MD5s for production equality.
+  Save both variants' original product contents only on differences or errors. Only this save step translates paths back to baseline/sut.
   Equal products retain both hashes without saving contents. Temporary production views are always deleted.
 - Saved contents are deduplicated immediately in `store/<filename>/<filename>-<md5>` shared by the run.
   Records do not repeat the derived store path. Cache archive contents are not retained for historical inspection; replay to reproduce them.
@@ -74,7 +76,8 @@ Records include the link task state. There is no comparison with previous result
 `debug_ic_fuzzer.py` coordinates both variants. `impl/config.py` handles configuration and distributions;
 `impl/repository.py` prepares repositories; `impl/build.py` runs and records a single build.
 `impl/validation.py` checks the completed build's link state, compiler path, and output.
-`impl/collection.py` snapshots caches and writes the store; `impl/comparison.py` compares products.
+`impl/collection.py` snapshots caches and writes the store; `impl/comparison.py` collects product hashes and compares records.
+Both collectors run inside `project`; each build JSON is written once before the worktree moves back.
 Platform-specific production normalization stays in `production_digest`; future iOS support can reuse the record format.
 `capture.init.gradle` overrides KGP, excludes the final link from Build Cache, reports the actual compiler path, and requests the built-cache archive list.
 

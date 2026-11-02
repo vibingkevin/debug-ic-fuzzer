@@ -1,4 +1,4 @@
-"""Move the project, run Gradle once, and record the result after completion."""
+"""Run Gradle in the active project and parse its completed log."""
 
 from pathlib import Path
 import json
@@ -8,7 +8,6 @@ import sys
 import time
 
 from impl.config import Compiler, Project
-from impl.repository import checkout_worktree
 from impl.validation import validate_result
 
 
@@ -22,7 +21,7 @@ def init_script() -> Path:
 
 
 def build(
-    repository: Path,
+    build_directory: Path,
     destination: Path,
     name: str,
     revision: str,
@@ -33,33 +32,31 @@ def build(
     record_name: str,
     last_link: dict | None = None,
 ) -> dict:
-    variant_directory = destination / name
     log = destination / f"{record_name}.gradle.log"
     started = time.monotonic()
-    with checkout_worktree(repository, variant_directory, revision) as build_directory:
-        command = [
-            str(build_directory / "gradlew"),
-            project.task,
-            *[
-                arg.replace("{config_dir}", str(config_dir))
-                for arg in project.gradle_args
-            ],
-            "--gradle-user-home",
-            str(Path.cwd() / ".gradle-home"),
-            "--console=plain",
-            "-I",
-            str(init_script()),
-            f"-Pic.kotlin.version={compiler.kotlin_version}",
-            "-Pkotlin.incremental.native=true",
-            "-Pkotlin.internal.compiler.arguments.log.level=warning",
-        ]
-        if compiler.kotlin_native_home is not None:
-            command.append(f"-Pkotlin.native.home={home}")
-        # Parse task details only after completion; keep the full log, including konanc arguments.
-        with log.open("w") as output:
-            code = subprocess.run(
-                command, cwd=build_directory, stdout=output, stderr=subprocess.STDOUT
-            ).returncode
+    command = [
+        str(build_directory / "gradlew"),
+        project.task,
+        *[
+            arg.replace("{config_dir}", str(config_dir))
+            for arg in project.gradle_args
+        ],
+        "--gradle-user-home",
+        str(Path.cwd() / ".gradle-home"),
+        "--console=plain",
+        "-I",
+        str(init_script()),
+        f"-Pic.kotlin.version={compiler.kotlin_version}",
+        "-Pkotlin.incremental.native=true",
+        "-Pkotlin.internal.compiler.arguments.log.level=warning",
+    ]
+    if compiler.kotlin_native_home is not None:
+        command.append(f"-Pkotlin.native.home={home}")
+    # Parse task details only after completion; keep the full log, including konanc arguments.
+    with log.open("w") as output:
+        code = subprocess.run(
+            command, cwd=build_directory, stdout=output, stderr=subprocess.STDOUT
+        ).returncode
     seconds = time.monotonic() - started
     log_text = log.read_text(errors="replace")
     task_states = re.findall(
@@ -90,5 +87,5 @@ def build(
         link=link,
         log=log.name,
     )
-    result["error"] = validate_result(result, variant_directory)
+    result["error"] = validate_result(result)
     return result

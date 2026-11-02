@@ -37,11 +37,10 @@ def inside(path: Path, root: Path) -> bool:
 
 
 def collect(result: dict, destination: Path):
-    """Collect after the worktree is parked; retain logical project paths."""
+    """Collect while all compiler-reported project paths still exist."""
     files = result["cache_files"] = []
     link = result["link"]
     project = Path(result["cwd"])
-    parked = destination / result["variant"]
     native = Path(result["native_home"]) / "klib/cache"
     roots = [(native, "native-home/klib/cache")]
     options = [line.strip() for line in (destination / result["log"]).read_text(errors="replace").splitlines()]
@@ -54,17 +53,14 @@ def collect(result: dict, destination: Path):
             ic = Path(link["ic_cache_dir"])
             if not ic.is_relative_to(project):
                 raise ValueError(f"IC cache is outside the project: {ic}")
-            local_ic = parked / ic.relative_to(project)
-            if not inside(local_ic, parked):
+            if not inside(ic, project):
                 raise ValueError(f"IC cache escapes the worktree: {ic}")
-            roots.append((local_ic, str(Path("project") / ic.relative_to(project))))
+            roots.append((ic, str(Path("project") / ic.relative_to(project))))
         elif result["exit_code"] == 0:
             raise ValueError("Expected one -Xic-cache-dir for the final link")
 
     def checked_cache(path: str):
         actual = Path(path)
-        if actual.is_relative_to(project):
-            actual = parked / actual.relative_to(project)
         if not any(inside(actual, root) for root, _ in roots):
             raise ValueError(f"Cache path is outside tracked roots: {path}")
 
@@ -78,7 +74,6 @@ def collect(result: dict, destination: Path):
         report = Path(link["built_caches"])
         if not report.is_relative_to(project):
             raise ValueError("Built-cache report is outside the project")
-        report = parked / report.relative_to(project)
         if report.exists():
             for archive in report.read_text().splitlines():
                 if archive:
