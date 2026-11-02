@@ -182,7 +182,7 @@ def test_only_reported_cache_units_are_collected(tmp_path):
     """Select only reported units in tmp_path, including external paths and excluding unchanged siblings."""
     project = tmp_path / "project"
     compiler = tmp_path / "compiler"
-    cache_locations = [tmp_path / "baseline-auto-cache", project / "module/build/ic", compiler / "klib/cache", tmp_path / "external-cache"]
+    cache_locations = [project / ".auto-cache", project / "module/build/ic", compiler / "klib/cache", tmp_path / "external-cache"]
     reported_archives = []
     for root in cache_locations:
         for unit in ("changed", "unchanged"):
@@ -201,7 +201,7 @@ def test_only_reported_cache_units_are_collected(tmp_path):
     assert len(records) == 8
     assert all("/changed/" in entry["path"] for entry in records)
     assert any(entry["path"].startswith("native-home/") for entry in records)
-    assert any(entry["path"].startswith("auto-cache/") for entry in records)
+    assert any(entry["path"].startswith("project/.auto-cache/") for entry in records)
     assert any(entry["path"].startswith("project/module/build/ic/") for entry in records)
     assert any(entry["path"].startswith(str(tmp_path / "external-cache")) for entry in records)
     report.write_text("")

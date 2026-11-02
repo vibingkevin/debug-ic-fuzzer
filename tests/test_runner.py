@@ -152,7 +152,8 @@ sys.exit(7 if home.endswith('fail') else 0)
     for name, home in [("baseline", Path("/compiler/fail")), ("sut", Path("/downloaded"))]:
         compiler = Compiler(kotlin_version="2.4.21", kotlin_native_home=home if name == "baseline" else None)
         with activate_worktree(repository, run_directory / name, first) as active:
-            result = build_project(active, project, compiler, home, run_directory / f"{name}-auto-cache", f"0000-{first[:12]}-{name}")
+            result = build_project(active, project, compiler, home, f"0000-{first[:12]}-{name}")
+            (active / ".auto-cache/owner").write_text(name)
         assert result["exit_code"] == (7 if name == "baseline" else 0)
         assert result["error"] is None
         assert result["log"] == f"0000-{first[:12]}-{name}.gradle.log"
@@ -160,8 +161,7 @@ sys.exit(7 if home.endswith('fail') else 0)
         assert not (run_directory / "store").exists()
         assert not (run_directory / "project").exists()
         assert "-Pic.kotlin.version=2.4.21" in result["command"]
-        assert f"-Pic.auto.cache.dir={run_directory}/{name}-auto-cache" in result["command"]
-        (run_directory / f"{name}-auto-cache/owner").write_text(name)
+        assert f"-Pic.auto.cache.dir={run_directory}/project/.auto-cache" in result["command"]
         assert "--info" not in result["command"]
         assert result["command"][result["command"].index("--gradle-user-home") + 1] == str(tmp_path / ".gradle-home")
         assert "-Pkotlin.internal.compiler.arguments.log.level=warning" in result["command"]
@@ -170,11 +170,12 @@ sys.exit(7 if home.endswith('fail') else 0)
     assert subprocess.check_output(["git", "-C", str(run_directory / "baseline"), "rev-parse", "HEAD"], text=True).strip() == first
     assert subprocess.check_output(["git", "-C", str(run_directory / "sut"), "rev-parse", "HEAD"], text=True).strip() == first
 
-    assert (run_directory / "baseline-auto-cache/owner").read_text() == "baseline"
-    assert (run_directory / "sut-auto-cache/owner").read_text() == "sut"
+    assert (run_directory / "baseline/.auto-cache/owner").read_text() == "baseline"
+    assert (run_directory / "sut/.auto-cache/owner").read_text() == "sut"
 
     # Reuse a worktree for the next commit without losing its build outputs.
     with activate_worktree(repository, run_directory / "sut", second) as worktree:
+        assert (worktree / ".auto-cache/owner").read_text() == "sut"
         assert (worktree / "second").read_text() == "second"
         assert (worktree / "build/app.kexe").exists()
         assert subprocess.check_output(["git", "-C", str(worktree), "rev-parse", "HEAD"], text=True).strip() == second
@@ -222,18 +223,16 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     monkeypatch.setattr(runner, "activate_worktree", fake_activate_worktree)
     monkeypatch.setattr(runner, "create_detached_worktree", lambda bare_repository, worktree_directory, commit_id: created.append((worktree_directory.name, commit_id)))
 
-    def fake_build_project(project_directory, project_config, compiler_config, native_home, auto_cache_directory, record_stem):
+    def fake_build_project(project_directory, project_config, compiler_config, native_home, record_stem):
         """Write a fake build log beside project_directory and return an injected build result.
 
         record_stem identifies the test commit and variant. project_config supplies
         resolved Gradle arguments to check. compiler_config
-        and native_home are unused arguments matching build_project. auto_cache_directory
-        must identify the variant-specific sibling cache.
+        and native_home are unused arguments matching build_project.
         """
         assert active
         _, commit_id, variant = record_stem.split("-")
         calls.append((commit_id, variant))
-        assert auto_cache_directory == project_directory.parent / f"{variant}-auto-cache"
         assert project_config.gradle_args == [f"-Pfixture={tmp_path}/fixture"]
         (project_directory.parent / f"{record_stem}.gradle.log").write_text("completed")
         skipped = commit_id == "b" and failure in ("both-up-to-date", f"{variant}-up-to-date")
@@ -321,7 +320,7 @@ def test_task_state_without_link(tmp_path, monkeypatch, task_line, expected_stat
     monkeypatch.setattr(builder.subprocess, "run", fake_gradle)
     (tmp_path / "project").mkdir()
     project = Project(repository="https://example.test/project.git", branch="main", start_commit="a", end_commit="b", task=":app:link")
-    result = build_project(tmp_path / "project", project, Compiler(kotlin_version="2.4.21"), Path("/compiler"), tmp_path / "baseline-auto-cache", "0001-b-baseline")
+    result = build_project(tmp_path / "project", project, Compiler(kotlin_version="2.4.21"), Path("/compiler"), "0001-b-baseline")
     assert result["task_state"] == expected_state
     assert result["link"] is None
     if error is None:

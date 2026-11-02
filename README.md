@@ -64,7 +64,7 @@ Collection and comparison:
   Each reported `<cache-unit>/bin/*.a` selects its containing cache-unit directory, including metadata and IR; duplicate directories are scanned once.
   For per-file caches this selects only the rebuilt file's unit, not its unchanged siblings; monolithic caches select the whole library unit.
   An empty report records `[]`; UP-TO-DATE records null. Missing reports after failed builds do not trigger a fallback scan.
-  Record `path`, `md5`, and `mtime_ns`. Known paths use `project/`, `auto-cache/`, or `native-home/` prefixes; other reported paths remain absolute.
+  Record `path`, `md5`, and `mtime_ns`. Known paths use `project/` or `native-home/` prefixes; other reported paths remain absolute.
 - Cache `metadata.properties` and `bitcode_deps` are saved after converting line endings to LF and stripping surrounding whitespace.
   Remove `compilerFingerprint` from metadata before hashing and saving. Cache `.a`, IR, and other files are hashed as bytes but not saved.
 - `artifacts`: inspect the final product directory (`.kexe`, `.so` plus its generated `.h`, or a flat iOS `.framework` with its sibling `.dSYM`).
@@ -90,8 +90,8 @@ All projects, runs, and both compiler variants share this directory and reuse do
 Gradle receives `KONAN_DATA_DIR=<tool-root>/.konan`, overriding the inherited environment without changing the parent process.
 The final link uses `-Xtemporary-files-dir=<run>/project/.tmp`, cleared before and after successful execution.
 Gradle also receives `ZERO_AR_DATE=1` to remove object timestamps from Mach-O debug maps and archive headers.
-The init script sets `-Xauto-cache-dir` to `<run>/baseline-auto-cache` or `<run>/sut-auto-cache`.
-These dependency caches stay beside the worktrees and are never moved. The project IC path comes from `-Xic-cache-dir`, including module-local build directories.
+The init script sets `-Xauto-cache-dir` to `<run>/project/.auto-cache`.
+Each worktree retains its own dependency cache; moving it to `project` gives both variants the same build path. The project IC path comes from `-Xic-cache-dir`, including module-local build directories.
 The compiler's `klib/cache` remains shared when Native homes match; existing system caches are not cleared.
 The tool root is `PROJECT_ROOT` in `impl/config.py`, resolved from that Python file; `.gradle-home/` and `.konan/` are ignored by Git.
 Build Cache and Configuration Cache follow project settings; only the final Native link is excluded from Build Cache reads and writes.
@@ -106,7 +106,7 @@ Execution-state mismatch is a test failure requiring investigation, not proof of
 `impl/collection.py` reads the current built-cache report and snapshots its reported cache directories.
 `impl/comparison.py` collects product hashes and compares records.
 Both collectors run inside `project`; each build JSON is written once before the worktree moves back.
-`build_project` groups project directory/config, compiler config/home/auto-cache, and the log stem.
+`build_project` groups project directory/config, compiler config/home, and the log stem.
 The replay loop expands config placeholders and adds commit/variant fields; run paths come from the project directory's parent.
 `impl/elf.py` and `impl/macho.py` each expose `is_binary` and `compute_production_md5`.
 `impl/comparison.py` dispatches by binary format; Mach-O handling also covers static framework archives.

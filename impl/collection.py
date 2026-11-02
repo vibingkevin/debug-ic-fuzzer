@@ -56,7 +56,7 @@ def collect_cache_files(build_result: dict, store_directory: Path) -> list[dict]
     """Read the compiler's built-cache report and snapshot only its reported cache units.
 
     Args:
-        build_result: Current link report, exit status, cwd, Native home, and variant name.
+        build_result: Current link report, exit status, cwd, and Native home.
         store_directory: Shared content store for normalized metadata.properties and bitcode_deps.
 
     Set build_result's rebuilt_cache_count from unique reported archive paths before scanning.
@@ -74,7 +74,7 @@ def collect_cache_files(build_result: dict, store_directory: Path) -> list[dict]
     build_result["rebuilt_cache_count"] = len(rebuilt_archives)
     cache_directories = sorted({archive.parent.parent for archive in rebuilt_archives})
     project_directory = Path(build_result["cwd"])
-    path_prefixes = [(project_directory, "project"), (project_directory.parent / f"{build_result['variant']}-auto-cache", "auto-cache"), (Path(build_result["native_home"]), "native-home")]
+    path_prefixes = [(project_directory, "project"), (Path(build_result["native_home"]), "native-home")]
     files = []
     for cache_directory in cache_directories:
         recorded_directory = cache_directory
