@@ -4,13 +4,13 @@ import subprocess
 
 import pytest
 
-from impl.collection import collect
-from impl.comparison import collect_products, compare, save_artifacts
-from impl.validation import validate_caches
+from impl.collection import collect_cache_files
+from impl.comparison import collect_product_hashes, compare_products, save_product_contents
+from impl.validation import validate_cache_paths
 
 
 @pytest.fixture
-def products(tmp_path):
+def product_records(tmp_path):
     """Build identical baseline/sut ELF libraries and headers under tmp_path; return link records."""
     source = tmp_path / "source.c"
     results = {}
@@ -21,32 +21,32 @@ def products(tmp_path):
         subprocess.run(["cc", "-g", "-shared", "-fPIC", str(source), "-o", str(output)], check=True)
         (output.parent / "libdemo_api.h").write_text("int value(void);\n")
         results[name] = dict(variant=name, cwd=str(tmp_path / "project"), link={"output": str(tmp_path / "project/build/libdemo.so")})
-    # Start with byte-identical products, independent of the host linker's defaults.
+    # Start with byte-identical product_records, independent of the host linker's defaults.
     shutil.copyfile(tmp_path / "baseline/build/libdemo.so", tmp_path / "sut/build/libdemo.so")
     return results
 
 
-def collect_pair(results, destination):
-    """Collect both variant records in results through destination/project, restoring each directory."""
-    for name, result in results.items():
-        active = destination / "project"
-        parked = destination / name
+def collect_pair_products(variant_results):
+    """Collect variant_results through each recorded cwd, restoring parked directories afterward."""
+    for variant, result in variant_results.items():
+        active = Path(result["cwd"])
+        parked = active.parent / variant
         parked.rename(active)
         try:
-            collect_products(result, destination)
+            collect_product_hashes(result)
         finally:
             active.rename(parked)
 
 
-def test_equal_products_keep_hashes_without_contents(tmp_path, products):
-    """Verify identical products fixture records compare without saved files in tmp_path."""
-    collect_pair(products, tmp_path)
-    # Equal results need no access to the parked products.
+def test_equal_products_keep_hashes_without_contents(tmp_path, product_records):
+    """Verify identical product records compare without saved files in tmp_path."""
+    collect_pair_products(product_records)
+    # Equal results need no access to the parked product_records.
     shutil.rmtree(tmp_path / "baseline")
     shutil.rmtree(tmp_path / "sut")
-    assert compare(products, tmp_path) == dict(strict_equal=True, production_equal=True)
+    assert compare_products(product_records) == dict(strict_equal=True, production_equal=True)
     assert not (tmp_path / "store").exists()
-    for result in products.values():
+    for result in product_records.values():
         assert len(result["artifacts"]) == 2
         binary = next(f for f in result["artifacts"] if f["path"].endswith(".so"))
         assert len(binary["md5"]) == len(binary["production_md5"]) == 32
@@ -54,8 +54,8 @@ def test_equal_products_keep_hashes_without_contents(tmp_path, products):
 
 
 @pytest.mark.parametrize("change", ["debug", "build-id", "code", "header", "missing"])
-def test_product_differences(tmp_path, products, change):
-    """Mutate products under tmp_path and check comparison flags and saved original bytes.
+def test_product_differences(tmp_path, product_records, change):
+    """Mutate product_records under tmp_path and check comparison flags and saved original bytes.
 
     change selects a debug, build-ID, code, header, or file-set difference.
     """
@@ -79,11 +79,11 @@ def test_product_differences(tmp_path, products, change):
         (output.parent / "libdemo_api.h").write_text("long value(void);\n")
     else:
         (output.parent / "extra.h").write_text("int extra(void);\n")
-    collect_pair(products, tmp_path)
-    result = compare(products, tmp_path)
+    collect_pair_products(product_records)
+    result = compare_products(product_records)
     assert result["strict_equal"] is False
     assert result["production_equal"] == (change in ("debug", "build-id"))
-    for record in products.values():
+    for record in product_records.values():
         for file in record["artifacts"]:
             name = Path(file["path"]).name
             saved = tmp_path / "store" / name / f"{name}-{file['md5']}"
@@ -92,11 +92,11 @@ def test_product_differences(tmp_path, products, change):
             assert set(file) == {"path", "md5", "mtime_ns", "production_md5"}
 
 
-def test_header_whitespace_is_nonblocking_but_originals_are_saved(tmp_path, products):
-    """Alter products fixture header whitespace in tmp_path; require equal production hashes and saved originals."""
+def test_header_whitespace_is_nonblocking_but_originals_are_saved(tmp_path, product_records):
+    """Alter product_records fixture header whitespace in tmp_path; require equal production hashes and saved originals."""
     (tmp_path / "sut/build/libdemo_api.h").write_bytes(b" \r\nint value(void);\r\n")
-    collect_pair(products, tmp_path)
-    result = compare(products, tmp_path)
+    collect_pair_products(product_records)
+    result = compare_products(product_records)
     assert not result["strict_equal"] and result["production_equal"]
     assert len(list((tmp_path / "store/libdemo_api.h").iterdir())) == 2
 
@@ -114,10 +114,10 @@ def test_cache_snapshot_normalization_dedup_and_no_binary_contents(tmp_path):
     native.mkdir(parents=True)
     (native / "bitcode_deps").write_text("stdlib\n")
     roots = [(root, "project/build/ic"), (native, "native-home/klib/cache")]
-    files = collect(roots, tmp_path / "store")
+    files = collect_cache_files(roots, tmp_path / "store")
     first = next(f for f in files if f["path"].endswith("metadata.properties"))
     metadata.write_text("hash=abc\ncompilerFingerprint=new\n")
-    files = collect(roots, tmp_path / "store")
+    files = collect_cache_files(roots, tmp_path / "store")
     second = next(f for f in files if f["path"].endswith("metadata.properties"))
     assert first["md5"] == second["md5"]
     assert len(list((tmp_path / "store/metadata.properties").iterdir())) == 1
@@ -145,23 +145,23 @@ def test_cache_boundary_errors(tmp_path, escape):
         (tmp_path / "outside.a").touch()
         (tmp_path / "project/build/ic/escape.a").symlink_to(tmp_path / "outside.a")
     with pytest.raises(ValueError, match="outside|symlink"):
-        roots = validate_caches(record, cache_paths, report)
-        collect(roots, tmp_path / "store")
+        roots = validate_cache_paths(record, cache_paths, report)
+        collect_cache_files(roots, tmp_path / "store")
 
 
-def test_strip_error_retains_hashes_and_can_save_after_restore(tmp_path, products, monkeypatch):
-    """Use monkeypatch to fail stripping products; verify raw hashes and later saving under tmp_path."""
+def test_strip_error_retains_hashes_and_can_save_after_restore(tmp_path, product_records, monkeypatch):
+    """Use monkeypatch to fail stripping product_records; verify raw hashes and later saving under tmp_path."""
 
     def fail(*_):
-        """Raise a simulated strip error; ignore all production_digest arguments in _."""
+        """Raise a simulated strip error; ignore all compute_production_md5 arguments in _."""
         raise OSError("strip unavailable")
 
-    monkeypatch.setattr("impl.comparison.production_digest", fail)
+    monkeypatch.setattr("impl.comparison.compute_production_md5", fail)
     with pytest.raises(OSError, match="strip unavailable"):
-        collect_pair(products, tmp_path)
+        collect_pair_products(product_records)
     assert not (tmp_path / "project").exists()
-    assert len(products["baseline"]["artifacts"]) == 2
-    save_artifacts(products, tmp_path)
-    for f in products["baseline"]["artifacts"]:
+    assert len(product_records["baseline"]["artifacts"]) == 2
+    save_product_contents(product_records)
+    for f in product_records["baseline"]["artifacts"]:
         name = Path(f["path"]).name
         assert (tmp_path / "store" / name / f"{name}-{f['md5']}").is_file()

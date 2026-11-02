@@ -8,63 +8,60 @@ import sys
 import time
 
 from impl.config import Compiler, Project
-from impl.validation import validate_caches, validate_result
+from impl.validation import validate_cache_paths, validate_link_result
 
 
-def init_script() -> Path:
+def gradle_init_script_path() -> Path:
     """Return the Gradle init script path from the source tree or installed package data."""
     script_path = Path(__file__).parent.parent / "capture.init.gradle"
     return script_path if script_path.exists() else Path(sys.prefix) / "share/debug-ic-fuzzer/capture.init.gradle"
 
 
-def build(build_directory: Path, destination: Path, name: str, revision: str, project: Project, compiler: Compiler, home: Path, config_dir: Path, record_name: str, last_link: dict | None = None) -> tuple[dict, list[tuple[Path, str]]]:
+def build_project(project_directory: Path, project_config: Project, compiler_config: Compiler, native_home: Path, record_stem: str, previous_link: dict | None = None) -> tuple[dict, list[tuple[Path, str]]]:
     """Run one Gradle build, then parse and validate its completed log.
 
     Args:
-        build_directory: Active project worktree containing gradlew.
-        destination: Run directory where the Gradle log is written.
-        name: Compiler variant, baseline or sut, recorded in the result.
-        revision: Checked-out commit ID recorded in the result.
-        project: Gradle task and additional arguments to execute.
-        compiler: KGP version and whether an explicit Native home was configured.
-        home: Resolved Native home to verify and, when configured, pass to Gradle.
-        config_dir: Project YAML directory substituted for {config_dir} in Gradle arguments.
-        record_name: Log filename stem, including commit index, ID, and variant.
-        last_link: Previous link metadata reused only when this task is UP-TO-DATE.
+        project_directory: Active project worktree; its parent is the run directory.
+        project_config: Gradle task and arguments, with config placeholders already expanded.
+        compiler_config: KGP version and whether an explicit Native home was configured.
+        native_home: Resolved Native distribution to verify and, when configured, pass to Gradle.
+        record_stem: Filename stem for the Gradle log written beside the project directory.
+        previous_link: Previous link metadata reused only when this task is UP-TO-DATE.
 
     Returns:
-        The build record and cache roots as (physical directory, logical prefix) pairs.
-        Build exit status and validation errors are recorded; process launch errors propagate.
+        The build record and (cache directory, recorded path prefix) pairs. The caller
+        adds commit and variant metadata. Exit status and validation errors are recorded;
+        process launch errors propagate.
     """
-    log = destination / f"{record_name}.gradle.log"
+    gradle_log_path = project_directory.parent / f"{record_stem}.gradle.log"
     started = time.monotonic()
     command = [
-        str(build_directory / "gradlew"),
-        project.task,
-        *[arg.replace("{config_dir}", str(config_dir)) for arg in project.gradle_args],
+        str(project_directory / "gradlew"),
+        project_config.task,
+        *project_config.gradle_args,
         "--gradle-user-home",
         str(Path.cwd() / ".gradle-home"),
         "--console=plain",
         "-I",
-        str(init_script()),
-        f"-Pic.kotlin.version={compiler.kotlin_version}",
+        str(gradle_init_script_path()),
+        f"-Pic.kotlin.version={compiler_config.kotlin_version}",
         "-Pkotlin.incremental.native=true",
         "-Pkotlin.internal.compiler.arguments.log.level=warning",
     ]
-    if compiler.kotlin_native_home is not None:
-        command.append(f"-Pkotlin.native.home={home}")
+    if compiler_config.kotlin_native_home is not None:
+        command.append(f"-Pkotlin.native.home={native_home}")
     # Parse task details only after completion; keep the full log, including konanc arguments.
-    with log.open("w") as output:
-        code = subprocess.run(command, cwd=build_directory, stdout=output, stderr=subprocess.STDOUT).returncode
+    with gradle_log_path.open("w") as output:
+        code = subprocess.run(command, cwd=project_directory, stdout=output, stderr=subprocess.STDOUT).returncode
     seconds = time.monotonic() - started
-    log_text = log.read_text(errors="replace")
-    task_states = re.findall(r"^> Task " + re.escape(project.task) + r"(?: ([A-Z-]+))?$", log_text, re.MULTILINE)
+    log_text = gradle_log_path.read_text(errors="replace")
+    task_states = re.findall(r"^> Task " + re.escape(project_config.task) + r"(?: ([A-Z-]+))?$", log_text, re.MULTILINE)
     task_state = (task_states[-1] or "EXECUTED") if task_states else None
     calls = [json.loads(line.removeprefix("IC_FUZZER ")) for line in log_text.splitlines() if line.startswith("IC_FUZZER ")]
     # Only carry task metadata for UP-TO-DATE; never compare with previous results.
     link = calls[0] if len(calls) == 1 else None
     if not calls and task_state == "UP-TO-DATE":
-        link = last_link
+        link = previous_link
     options = [line.strip() for line in log_text.splitlines()]
     cache_paths = []
     for arg in options:
@@ -78,11 +75,11 @@ def build(build_directory: Path, destination: Path, name: str, revision: str, pr
         if len(directories) == 1:
             link["ic_cache_dir"] = directories.pop()
         report_path = link.get("built_caches")
-    result = dict(commit=revision, variant=name, command=command, cwd=str(build_directory), kotlin_version=compiler.kotlin_version, native_home=str(home), exit_code=code, seconds=seconds, task_state=task_state, link=link, log=log.name)
-    result["error"] = validate_result(result)
-    roots = [(home / "klib/cache", "native-home/klib/cache")]
+    result = dict(command=command, cwd=str(project_directory), kotlin_version=compiler_config.kotlin_version, native_home=str(native_home), exit_code=code, seconds=seconds, task_state=task_state, link=link, log=gradle_log_path.name)
+    result["error"] = validate_link_result(result)
+    roots = [(native_home / "klib/cache", "native-home/klib/cache")]
     try:
-        roots = validate_caches(result, cache_paths, report_path)
+        roots = validate_cache_paths(result, cache_paths, report_path)
     except (ValueError, OSError) as error:
         result["error"] = result["error"] or str(error)
     return result, roots

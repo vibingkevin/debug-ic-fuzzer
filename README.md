@@ -80,7 +80,9 @@ and resolves cache paths, including reused UP-TO-DATE metadata.
 `impl/collection.py` only accepts directories and a store, then snapshots files; it does not read build logs or task states.
 `impl/comparison.py` collects product hashes and compares records.
 Both collectors run inside `project`; each build JSON is written once before the worktree moves back.
-Platform-specific production normalization stays in `production_digest`; future iOS support can reuse the record format.
+`build_project` groups project directory/config, compiler config/home, and log stem/previous link metadata.
+The replay loop expands config placeholders and adds commit/variant fields; run paths come from the project directory's parent.
+Platform-specific production normalization stays in `compute_production_md5`; future iOS support can reuse the record format.
 `capture.init.gradle` overrides KGP, excludes the final link from Build Cache, reports the actual compiler path, and requests the built-cache archive list.
 
 ### Inlining options

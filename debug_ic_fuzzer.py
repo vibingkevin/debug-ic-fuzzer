@@ -10,69 +10,71 @@ import tarfile
 
 import yaml
 
-from impl.build import build
-from impl.collection import collect
-from impl.comparison import collect_products, compare, save_artifacts
-from impl.config import Compilers, Project, load, prepare_home
-from impl.repository import prepare_repository, create_worktree, checkout_worktree
+from impl.build import build_project
+from impl.collection import collect_cache_files
+from impl.comparison import collect_product_hashes, compare_products, save_product_contents
+from impl.config import Compilers, Project, load_config, resolve_native_home
+from impl.repository import prepare_repository, create_detached_worktree, activate_worktree
 
 
-def run(compilers_path: Path, project_path: Path) -> int:
+def replay_commits(compilers_yaml: Path, project_yaml: Path) -> int:
     """Replay both compilers, collect results, and stop after a failed commit pair.
 
     Args:
-        compilers_path: YAML file defining baseline and sut distributions.
-        project_path: YAML file defining the repository, commit range, and Gradle task.
+        compilers_yaml: YAML file defining baseline and sut distributions.
+        project_yaml: YAML file defining the repository, commit range, and Gradle task.
 
     Returns:
         0 if all pairs pass production comparison, otherwise 1. Writes results and
         worktrees under the current directory; configuration/setup errors propagate.
     """
-    compilers = load(compilers_path, Compilers).compilers
-    project = load(project_path, Project)
-    root = Path.cwd()
-    destination = root / "run" / f"{compilers_path.stem}-{project_path.stem}-{datetime.now():%Y%m%d-%H%M%S}"
-    destination.mkdir(parents=True)
-    with ExitStack() as temporary:
-        homes = {name: prepare_home(c, compilers_path.parent, temporary) for name, c in compilers.items()}
-        if (homes["baseline"] / "klib/cache").resolve() == (homes["sut"] / "klib/cache").resolve():
+    compilers = load_config(compilers_yaml, Compilers).compilers
+    project_config = load_config(project_yaml, Project)
+    project_config.gradle_args = [arg.replace("{config_dir}", str(project_yaml.parent)) for arg in project_config.gradle_args]
+    tool_directory = Path.cwd()
+    run_directory = tool_directory / "run" / f"{compilers_yaml.stem}-{project_yaml.stem}-{datetime.now():%Y%m%d-%H%M%S}"
+    run_directory.mkdir(parents=True)
+    with ExitStack() as compiler_cleanup:
+        native_homes = {variant: resolve_native_home(compiler_config, compilers_yaml.parent, compiler_cleanup) for variant, compiler_config in compilers.items()}
+        if (native_homes["baseline"] / "klib/cache").resolve() == (native_homes["sut"] / "klib/cache").resolve():
             raise ValueError("baseline and sut cannot use the same Native cache")
-        repository, revisions = prepare_repository(root / "repos", project)
-        for name in ("baseline", "sut"):
-            create_worktree(repository, destination / name, revisions[0])
+        bare_repository, commit_ids = prepare_repository(tool_directory / "repos", project_config)
+        for variant in ("baseline", "sut"):
+            create_detached_worktree(bare_repository, run_directory / variant, commit_ids[0])
         failed = False
-        last_links = {"baseline": None, "sut": None}
-        for index, revision in enumerate(revisions):
-            results = {}
-            for name in ("baseline", "sut"):
-                record_name = f"{index:04d}-{revision[:12]}-{name}"
-                with checkout_worktree(repository, destination / name, revision) as project_directory:
-                    result, cache_roots = build(project_directory, destination, name, revision, project, compilers[name], homes[name], project_path.parent, record_name, last_links[name])
+        previous_links = {"baseline": None, "sut": None}
+        for commit_index, commit_id in enumerate(commit_ids):
+            variant_results = {}
+            for variant in ("baseline", "sut"):
+                record_stem = f"{commit_index:04d}-{commit_id[:12]}-{variant}"
+                with activate_worktree(bare_repository, run_directory / variant, commit_id) as project_directory:
+                    build_result, cache_roots = build_project(project_directory, project_config, compilers[variant], native_homes[variant], record_stem, previous_links[variant])
+                    build_result.update(commit=commit_id, variant=variant)
                     try:
-                        result["cache_files"] = collect(cache_roots, destination / "store")
-                        if result["exit_code"] == 0 and result["error"] is None:
-                            collect_products(result, destination)
+                        build_result["cache_files"] = collect_cache_files(cache_roots, run_directory / "store")
+                        if build_result["exit_code"] == 0 and build_result["error"] is None:
+                            collect_product_hashes(build_result)
                     except (ValueError, OSError, subprocess.CalledProcessError) as error:
-                        result["error"] = result["error"] or str(error)
-                    results[name] = result
-                    (destination / f"{record_name}.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
-                failed |= result["exit_code"] != 0 or result["error"] is not None
-                last_links[name] = result["link"]
-                print(f"{index:04d} {revision[:12]} {name}: exit={result['exit_code']} error={result['error']}", flush=True)
+                        build_result["error"] = build_result["error"] or str(error)
+                    variant_results[variant] = build_result
+                    (run_directory / f"{record_stem}.json").write_text(json.dumps(build_result, ensure_ascii=False, indent=2) + "\n")
+                failed |= build_result["exit_code"] != 0 or build_result["error"] is not None
+                previous_links[variant] = build_result["link"]
+                print(f"{commit_index:04d} {commit_id[:12]} {variant}: exit={build_result['exit_code']} error={build_result['error']}", flush=True)
             comparison = {"error": "Build or collection failed"}
             try:
                 if failed:
-                    save_artifacts(results, destination)
+                    save_product_contents(variant_results)
                 else:
-                    comparison = compare(results, destination)
+                    comparison = compare_products(variant_results)
             except (ValueError, OSError) as error:
                 comparison = {"error": str(error)}
-            (destination / f"{index:04d}-{revision[:12]}-comparison.json").write_text(json.dumps(comparison, indent=2) + "\n")
-            print(f"{index:04d} comparison: {comparison}", flush=True)
+            (run_directory / f"{commit_index:04d}-{commit_id[:12]}-comparison.json").write_text(json.dumps(comparison, indent=2) + "\n")
+            print(f"{commit_index:04d} comparison: {comparison}", flush=True)
             failed |= comparison.get("production_equal") is not True
             if failed:
                 break
-        print(destination, flush=True)
+        print(run_directory, flush=True)
         return int(failed)
 
 
@@ -83,7 +85,7 @@ def main():
     parser.add_argument("--project", required=True, type=Path)
     args = parser.parse_args()
     try:
-        return run(args.compilers.resolve(), args.project.resolve())
+        return replay_commits(args.compilers.resolve(), args.project.resolve())
     except (ValueError, OSError, subprocess.CalledProcessError, tarfile.TarError, yaml.YAMLError) as error:
         parser.exit(2, f"{error}\n")
 

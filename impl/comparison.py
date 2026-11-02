@@ -5,18 +5,18 @@ import hashlib
 import subprocess
 import tempfile
 
-from impl.collection import inside, normalized_text, snapshot
+from impl.collection import is_within_directory, normalize_text_content, snapshot_file
 
 
-def products(result: dict) -> dict[str, Path]:
-    """Find final product files while result's cwd still points to the active project.
+def find_product_files(build_result: dict) -> dict[str, Path]:
+    """Find final product files while build_result's cwd points to the active project.
 
-    result supplies cwd and link.output. Return logical project paths mapped to physical
+    build_result supplies cwd and link.output. Return recorded project paths mapped to physical
     files beside the output; require Linux ELF, a header for .so, and no file symlinks.
     """
-    project = Path(result["cwd"])
-    output = Path(result["link"]["output"])
-    if not inside(output, project) or not output.is_file():
+    project = Path(build_result["cwd"])
+    output = Path(build_result["link"]["output"])
+    if not is_within_directory(output, project) or not output.is_file():
         raise ValueError("Expected a Linux product file inside the project")
     with output.open("rb") as stream:
         if stream.read(4) != b"\x7fELF":
@@ -32,68 +32,68 @@ def products(result: dict) -> dict[str, Path]:
     return files
 
 
-def production_digest(path: Path, temporary: Path) -> str:
-    """Return the MD5 of path's production view without changing the original file.
+def compute_production_md5(product_path: Path, scratch_directory: Path) -> str:
+    """Return the MD5 of product_path's production view without changing the original file.
 
-    path is a product file. temporary is an existing scratch directory for a stripped
-    ELF copy without its build ID. Normalize headers as text; hash other files unchanged.
+    product_path is the product file. scratch_directory holds a temporary stripped ELF
+    copy without its build ID. Normalize headers as text; hash other files unchanged.
     """
-    if path.suffix == ".h":
-        return hashlib.md5(normalized_text(path.read_bytes(), path.name)).hexdigest()
-    with path.open("rb") as stream:
+    if product_path.suffix == ".h":
+        return hashlib.md5(normalize_text_content(product_path.read_bytes(), product_path.name)).hexdigest()
+    with product_path.open("rb") as stream:
         elf = stream.read(4) == b"\x7fELF"
     if elf:
-        output = temporary / "product"
-        subprocess.run(["llvm-strip", "--strip-all", "--remove-section=.note.gnu.build-id", "-o", str(output), str(path)], check=True, capture_output=True, text=True)
-        path = output
-    with path.open("rb") as stream:
+        output = scratch_directory / "product"
+        subprocess.run(["llvm-strip", "--strip-all", "--remove-section=.note.gnu.build-id", "-o", str(output), str(product_path)], check=True, capture_output=True, text=True)
+        product_path = output
+    with product_path.open("rb") as stream:
         return hashlib.file_digest(stream, "md5").hexdigest()
 
 
-def collect_products(result: dict, destination: Path):
-    """Add artifact hashes and mtimes to result while its project directory is active.
+def collect_product_hashes(build_result: dict):
+    """Add artifact hashes and mtimes to build_result while its project directory is active.
 
-    result supplies cwd and link.output and receives artifacts in place. destination is
-    the run directory passed to snapshot; no product contents are saved at this stage.
+    build_result supplies cwd and link.output and receives artifacts in place.
+    No product contents are saved at this stage.
     Raw records remain available if computing a production digest fails.
     """
-    files = products(result)
-    result["artifacts"] = [snapshot(path, logical, destination / "store", save=False) for logical, path in files.items()]
+    files = find_product_files(build_result)
+    build_result["artifacts"] = [snapshot_file(path, logical) for logical, path in files.items()]
     with tempfile.TemporaryDirectory(prefix="ic-compare-") as temporary:
-        for entry in result["artifacts"]:
-            entry["production_md5"] = production_digest(files[entry["path"]], Path(temporary))
+        for entry in build_result["artifacts"]:
+            entry["production_md5"] = compute_production_md5(files[entry["path"]], Path(temporary))
 
 
-def save_artifacts(results: dict, destination: Path):
+def save_product_contents(variant_results: dict):
     """Save recorded original products after worktrees return to baseline/sut locations.
 
-    results maps variant names to records containing logical artifact paths. destination
-    contains those worktrees and the shared store where contents are deduplicated.
+    variant_results maps baseline/sut to records containing cwd and artifact paths.
+    Each cwd's parent locates the run directory, parked worktrees, and shared content store.
     """
     # This is the only place that resolves recorded paths after the worktrees move back.
-    for name, result in results.items():
-        for entry in result.get("artifacts", []):
-            path = destination / name / Path(entry["path"]).relative_to("project")
-            snapshot(path, entry["path"], destination / "store", save=True)
+    for variant, build_result in variant_results.items():
+        run_directory = Path(build_result["cwd"]).parent
+        for entry in build_result.get("artifacts", []):
+            path = run_directory / variant / Path(entry["path"]).relative_to("project")
+            snapshot_file(path, entry["path"], run_directory / "store")
 
 
-def compare(results: dict, destination: Path) -> dict:
+def compare_products(variant_results: dict) -> dict:
     """Compare baseline/sut artifact records and save original products on strict differences.
 
     Args:
-        results: Variant records with artifact paths, raw MD5s, and production MD5s.
-        destination: Run directory containing parked worktrees and the shared store.
+        variant_results: Baseline/sut records with cwd, artifact paths, and both MD5s.
 
     Return strict_equal and production_equal, plus differing path lists on strict
     differences. Missing files count as differences; equal records require no file reads.
     """
-    baseline, sut = ({f["path"]: f for f in results[name]["artifacts"]} for name in ("baseline", "sut"))
+    baseline, sut = ({f["path"]: f for f in variant_results[name]["artifacts"]} for name in ("baseline", "sut"))
     missing = baseline.keys() ^ sut.keys()
     common = baseline.keys() & sut.keys()
     strict_diff = sorted(missing | {p for p in common if baseline[p]["md5"] != sut[p]["md5"]})
     production_diff = sorted(missing | {p for p in common if baseline[p]["production_md5"] != sut[p]["production_md5"]})
     comparison = dict(strict_equal=not strict_diff, production_equal=not production_diff)
     if strict_diff:
-        save_artifacts(results, destination)
+        save_product_contents(variant_results)
         comparison.update(strict_diff=strict_diff, production_diff=production_diff)
     return comparison

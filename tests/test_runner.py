@@ -8,10 +8,10 @@ import tarfile
 
 import pytest
 
-from debug_ic_fuzzer import run
-from impl.build import build
-from impl.config import Compiler, Project, prepare_home
-from impl.repository import checkout_worktree, create_worktree, prepare_repository
+from debug_ic_fuzzer import replay_commits
+from impl.build import build_project
+from impl.config import Compiler, Project, resolve_native_home
+from impl.repository import activate_worktree, create_detached_worktree, prepare_repository
 
 
 @pytest.mark.parametrize("extension", ["tgz", "tar.gz"])
@@ -29,11 +29,11 @@ def test_home_paths_and_fresh_archives(tmp_path, monkeypatch, extension):
         entry.size = 1
         tar.addfile(entry, io.BytesIO(b"x"))
     with ExitStack() as stack:
-        assert prepare_home(Compiler(kotlin_version="2.4.21"), tmp_path, stack) == tmp_path / "konan/kotlin-native-prebuilt-linux-x86_64-2.4.21"
+        assert resolve_native_home(Compiler(kotlin_version="2.4.21"), tmp_path, stack) == tmp_path / "konan/kotlin-native-prebuilt-linux-x86_64-2.4.21"
         with pytest.raises(ValueError, match="absolute path"):
-            prepare_home(Compiler(kotlin_version="2.4.21", kotlin_native_home="relative"), tmp_path, stack)
+            resolve_native_home(Compiler(kotlin_version="2.4.21", kotlin_native_home="relative"), tmp_path, stack)
         c = Compiler(kotlin_version="2.4.21", kotlin_native_home=f"compiler.{extension}")
-        first, second = [prepare_home(c, tmp_path, stack) for _ in range(2)]
+        first, second = [resolve_native_home(c, tmp_path, stack) for _ in range(2)]
         assert first != second and (first / "bin/konanc").is_file()
     assert not first.exists() and not second.exists()
 
@@ -46,7 +46,7 @@ def test_tar_cannot_escape(tmp_path):
         entry.size = 1
         tar.addfile(entry, io.BytesIO(b"x"))
     with ExitStack() as stack, pytest.raises(tarfile.FilterError):
-        prepare_home(Compiler(kotlin_version="2.4.21", kotlin_native_home=archive), tmp_path, stack)
+        resolve_native_home(Compiler(kotlin_version="2.4.21", kotlin_native_home=archive), tmp_path, stack)
     assert not (tmp_path / "escape").exists()
 
 
@@ -56,7 +56,7 @@ def test_same_default_home_fails_before_clone(tmp_path, monkeypatch):
     (tmp_path / "compilers.yaml").write_text('compilers:\n  baseline: {kotlin_version: "2.4.21"}\n  sut: {kotlin_version: "2.4.21"}\n')
     (tmp_path / "project.yaml").write_text("repository: https://example.test/project.git\nbranch: main\nstart_commit: a\nend_commit: a\ntask: :app:link\n")
     with pytest.raises(ValueError, match="same Native cache"):
-        run(tmp_path / "compilers.yaml", tmp_path / "project.yaml")
+        replay_commits(tmp_path / "compilers.yaml", tmp_path / "project.yaml")
     assert not (tmp_path / "repos").exists()
 
 
@@ -94,9 +94,9 @@ def test_shared_repository_independent_worktrees_and_failed_build(tmp_path, monk
     source = tmp_path / "source"
     subprocess.run(["git", "init", "-b", "main", str(source)], check=True, capture_output=True)
 
-    def local(*args):
-        """Run Git args in the fixture's source repository and return stripped stdout."""
-        return subprocess.check_output(["git", "-C", str(source), *args], text=True).strip()
+    def run_source_git(*git_args):
+        """Run Git git_args in the fixture's source repository and return stripped stdout."""
+        return subprocess.check_output(["git", "-C", str(source), *git_args], text=True).strip()
 
     # Use a fake local gradlew to check process execution, moves, failure logs, and arguments.
     (source / "gradlew").write_text(
@@ -113,13 +113,13 @@ sys.exit(7 if home.endswith('fail') else 0)
 """
     )
     (source / "gradlew").chmod(0o755)
-    local("add", ".")
-    local("-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "first")
-    first = local("rev-parse", "HEAD")
+    run_source_git("add", ".")
+    run_source_git("-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "first")
+    first = run_source_git("rev-parse", "HEAD")
     (source / "second").write_text("second")
-    local("add", ".")
-    local("-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "second")
-    second = local("rev-parse", "HEAD")
+    run_source_git("add", ".")
+    run_source_git("-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "second")
+    second = run_source_git("rev-parse", "HEAD")
     # Bypass URL validation for the local Git fixture; the CLI still requires a remote URL.
     project = Project.model_construct(repository=str(source), branch="main", start_commit=first, end_commit=second, direction="forward", task=":app:link", gradle_args=[])
     repository, revisions = prepare_repository(tmp_path / "repos", project)
@@ -134,50 +134,50 @@ sys.exit(7 if home.endswith('fail') else 0)
     project.start_commit = "missing-commit"
     with pytest.raises(ValueError):
         prepare_repository(tmp_path / "repos", project)
-    local("checkout", "-b", "side", first)
+    run_source_git("checkout", "-b", "side", first)
     (source / "side").write_text("side")
-    local("add", ".")
-    local("-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "side")
-    project.start_commit = local("rev-parse", "HEAD")
-    local("checkout", "main")
+    run_source_git("add", ".")
+    run_source_git("-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "side")
+    project.start_commit = run_source_git("rev-parse", "HEAD")
+    run_source_git("checkout", "main")
     subprocess.run(["git", "--git-dir", str(repository), "fetch", "origin", "side"], check=True, capture_output=True)
     with pytest.raises(ValueError, match="selected branch"):
         prepare_repository(tmp_path / "repos", project)
     project.start_commit, project.end_commit = first, second
-    destination = tmp_path / "run"
-    destination.mkdir()
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
     for name, sha in [("baseline", first), ("sut", second)]:
-        create_worktree(repository, destination / name, sha)
+        create_detached_worktree(repository, run_directory / name, sha)
     for name, home in [("baseline", Path("/compiler/fail")), ("sut", Path("/downloaded"))]:
         compiler = Compiler(kotlin_version="2.4.21", kotlin_native_home=home if name == "baseline" else None)
-        with checkout_worktree(repository, destination / name, first) as active:
-            result, _ = build(active, destination, name, first, project, compiler, home, tmp_path, f"0000-{first[:12]}-{name}")
+        with activate_worktree(repository, run_directory / name, first) as active:
+            result, _ = build_project(active, project, compiler, home, f"0000-{first[:12]}-{name}")
         assert result["exit_code"] == (7 if name == "baseline" else 0)
         assert result["error"] is None
         assert result["log"] == f"0000-{first[:12]}-{name}.gradle.log"
-        assert (destination / result["log"]).is_file()
-        assert not (destination / "store").exists()
-        assert not (destination / "project").exists()
+        assert (run_directory / result["log"]).is_file()
+        assert not (run_directory / "store").exists()
+        assert not (run_directory / "project").exists()
         assert "-Pic.kotlin.version=2.4.21" in result["command"]
         assert "--info" not in result["command"]
         assert result["command"][result["command"].index("--gradle-user-home") + 1] == str(tmp_path / ".gradle-home")
         assert "-Pkotlin.internal.compiler.arguments.log.level=warning" in result["command"]
         assert not any(a.startswith("-Pkotlin.native.version=") for a in result["command"])
         assert not any(a.startswith("--no-") for a in result["command"])
-    assert subprocess.check_output(["git", "-C", str(destination / "baseline"), "rev-parse", "HEAD"], text=True).strip() == first
-    assert subprocess.check_output(["git", "-C", str(destination / "sut"), "rev-parse", "HEAD"], text=True).strip() == first
+    assert subprocess.check_output(["git", "-C", str(run_directory / "baseline"), "rev-parse", "HEAD"], text=True).strip() == first
+    assert subprocess.check_output(["git", "-C", str(run_directory / "sut"), "rev-parse", "HEAD"], text=True).strip() == first
 
     # Reuse a worktree for the next commit without losing its build outputs.
-    with checkout_worktree(repository, destination / "sut", second) as worktree:
+    with activate_worktree(repository, run_directory / "sut", second) as worktree:
         assert (worktree / "second").read_text() == "second"
         assert (worktree / "build/app.kexe").exists()
         assert subprocess.check_output(["git", "-C", str(worktree), "rev-parse", "HEAD"], text=True).strip() == second
-    assert not (destination / "project").exists()
+    assert not (run_directory / "project").exists()
     with pytest.raises(subprocess.CalledProcessError):
-        with checkout_worktree(repository, destination / "sut", "missing-commit"):
+        with activate_worktree(repository, run_directory / "sut", "missing-commit"):
             pytest.fail("Invalid commit must not enter the build phase")
-    assert (destination / "sut").is_dir()
-    assert not (destination / "project").exists()
+    assert (run_directory / "sut").is_dir()
+    assert not (run_directory / "project").exists()
 
 
 @pytest.mark.parametrize("failure", [None, "baseline", "sut", "production", "debug", "collection"])
@@ -192,81 +192,82 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
 
     monkeypatch.chdir(tmp_path)
     compilers = Compilers(compilers={name: Compiler(kotlin_version="2.4.21") for name in ("baseline", "sut")})
-    project = Project(repository="https://example.test/project.git", branch="main", start_commit="a", end_commit="c", task=":app:link")
-    monkeypatch.setattr(runner, "load", lambda path, model: compilers if model is Compilers else project)
-    monkeypatch.setattr(runner, "prepare_home", lambda compiler, *_: Path("/baseline") if compiler is compilers.compilers["baseline"] else Path("/sut"))
+    project = Project(repository="https://example.test/project.git", branch="main", start_commit="a", end_commit="c", task=":app:link", gradle_args=["-Pfixture={config_dir}/fixture"])
+    monkeypatch.setattr(runner, "load_config", lambda path, model: compilers if model is Compilers else project)
+    monkeypatch.setattr(runner, "resolve_native_home", lambda compiler, *_: Path("/baseline") if compiler is compilers.compilers["baseline"] else Path("/sut"))
     monkeypatch.setattr(runner, "prepare_repository", lambda *_: (tmp_path / "repo", ["a", "b", "c"]))
     created, calls = [], []
     active = False
 
     @contextmanager
-    def checkout(repo, directory, revision):
-        """Mark the fake project active and yield directory's sibling project path.
+    def fake_activate_worktree(bare_repository, parked_worktree, commit_id):
+        """Yield parked_worktree's sibling project path and track its active lifetime.
 
-        repo and revision are unused repository/commit arguments from the real interface;
-        directory identifies the parked variant. Always reset the active flag on exit.
+        bare_repository and commit_id are unused arguments matching activate_worktree.
         """
         nonlocal active
         active = True
         try:
-            yield directory.parent / "project"
+            yield parked_worktree.parent / "project"
         finally:
             active = False
 
-    monkeypatch.setattr(runner, "checkout_worktree", checkout)
-    monkeypatch.setattr(runner, "create_worktree", lambda repo, path, sha: created.append((path.name, sha)))
+    monkeypatch.setattr(runner, "activate_worktree", fake_activate_worktree)
+    monkeypatch.setattr(runner, "create_detached_worktree", lambda bare_repository, worktree_directory, commit_id: created.append((worktree_directory.name, commit_id)))
 
-    def fake_build(repo, destination, name, revision, project, compiler, home, config_dir, record_name, last_link):
-        """Record one fake build and write its log, optionally failing the selected variant.
+    def fake_build_project(project_directory, project_config, compiler_config, native_home, record_stem, previous_link):
+        """Write a fake build log beside project_directory and return an injected build result.
 
-        destination and record_name locate the log; name and revision identify the build.
-        last_link is checked against expected previous metadata. repo (the active worktree),
-        project, compiler, home, and config_dir are unused arguments matching build's interface.
-        Return a build record and an empty list of cache roots.
+        record_stem identifies the test commit and variant; previous_link must match prior
+        metadata. project_config supplies resolved Gradle arguments to check. compiler_config
+        and native_home are unused arguments matching build_project.
         """
         assert active
-        calls.append((revision, name))
-        assert last_link == (None if revision == "a" else {"task": ":app:link"})
-        (destination / f"{record_name}.gradle.log").write_text("completed")
-        return dict(commit=revision, variant=name, exit_code=int(revision == "b" and name == failure), error=None, link={"task": ":app:link"}), []
+        _, commit_id, variant = record_stem.split("-")
+        calls.append((commit_id, variant))
+        assert previous_link == (None if commit_id == "a" else {"task": ":app:link"})
+        assert project_config.gradle_args == [f"-Pfixture={tmp_path}/fixture"]
+        (project_directory.parent / f"{record_stem}.gradle.log").write_text("completed")
+        return dict(cwd=str(project_directory), exit_code=int(commit_id == "b" and variant == failure), error=None, link={"task": ":app:link"}), []
 
-    monkeypatch.setattr(runner, "build", fake_build)
+    monkeypatch.setattr(runner, "build_project", fake_build_project)
 
-    def collect_result(result, destination):
-        """Check collection happens while active, optionally raising the selected failure.
+    def fake_collect_cache_files(cache_roots, store_directory):
+        """Check active collection and inject the selected cache failure.
 
-        result accepts cache roots or a build record; destination accepts the store or run
-        directory. Both are unused because this fake serves the two collection interfaces.
+        cache_roots and store_directory are unused inputs matching collect_cache_files.
         """
         assert active
         if failure == "collection" and calls[-1] == ("b", "baseline"):
             raise ValueError("Cache is outside the project")
         return []
 
-    def compare_results(results, destination):
-        """Return injected comparison flags after verifying worktrees are parked.
+    def fake_collect_product_hashes(build_result):
+        """Verify build_result already has commit/variant metadata while the project is active."""
+        assert active
+        assert (build_result["commit"], build_result["variant"]) == calls[-1]
 
-        results supplies the current baseline commit; destination is the unused run directory.
-        """
+    def fake_compare_products(variant_results):
+        """Use variant_results' baseline commit to inject differences after worktrees are parked."""
         assert not active
-        changed = failure in ("production", "debug") and results["baseline"]["commit"] == "b"
+        changed = failure in ("production", "debug") and variant_results["baseline"]["commit"] == "b"
         return dict(strict_equal=not changed, production_equal=not (changed and failure == "production"))
 
-    monkeypatch.setattr(runner, "collect", collect_result)
-    monkeypatch.setattr(runner, "collect_products", collect_result)
-    monkeypatch.setattr(runner, "save_artifacts", lambda *_: None)
-    monkeypatch.setattr(runner, "compare", compare_results)
-    assert run(tmp_path / "compilers.yaml", tmp_path / "project.yaml") == int(failure not in (None, "debug"))
+    monkeypatch.setattr(runner, "collect_cache_files", fake_collect_cache_files)
+    monkeypatch.setattr(runner, "collect_product_hashes", fake_collect_product_hashes)
+    monkeypatch.setattr(runner, "save_product_contents", lambda *_: None)
+    monkeypatch.setattr(runner, "compare_products", fake_compare_products)
+    assert replay_commits(tmp_path / "compilers.yaml", tmp_path / "project.yaml") == int(failure not in (None, "debug"))
     assert created == [("baseline", "a"), ("sut", "a")]
     revisions = ["a", "b"] if failure not in (None, "debug") else ["a", "b", "c"]
     assert calls == [(sha, name) for sha in revisions for name in ("baseline", "sut")]
-    (destination,) = (tmp_path / "run").iterdir()
-    assert len(list(destination.glob("*.json"))) == len(calls) + len(revisions)
+    (run_directory,) = (tmp_path / "run").iterdir()
+    assert len(list(run_directory.glob("*.json"))) == len(calls) + len(revisions)
     for index, sha in enumerate(revisions):
         for name in ("baseline", "sut"):
             record_name = f"{index:04d}-{sha}-{name}"
-            assert json.loads((destination / f"{record_name}.json").read_text())["commit"] == sha
-            assert (destination / f"{record_name}.gradle.log").is_file()
+            assert json.loads((run_directory / f"{record_name}.json").read_text())["commit"] == sha
+            assert (run_directory / f"{record_name}.gradle.log").is_file()
 
 
 @pytest.mark.parametrize("state,previous,output,valid", [("UP-TO-DATE", True, True, True), ("UP-TO-DATE", False, True, False), ("UP-TO-DATE", True, False, False), ("FROM-CACHE", True, True, False)])
@@ -296,6 +297,6 @@ def test_skipped_link(tmp_path, monkeypatch, state, previous, output, valid):
         (tmp_path / "project/app.kexe").touch()
     link = dict(home="/compiler", output=str(tmp_path / "project/app.kexe"), ic_cache_dir=str(tmp_path / "project/build/ic"), built_caches=str(tmp_path / "project/missing-old-report.txt"))
     project = Project(repository="https://example.test/project.git", branch="main", start_commit="a", end_commit="b", task=":app:link")
-    result, _ = build(tmp_path / "project", tmp_path, "baseline", "b", project, Compiler(kotlin_version="2.4.21"), Path("/compiler"), tmp_path, "0001-b-baseline", link if previous else None)
+    result, _ = build_project(tmp_path / "project", project, Compiler(kotlin_version="2.4.21"), Path("/compiler"), "0001-b-baseline", link if previous else None)
     assert (result["error"] is None) == valid
     assert result["task_state"] == state
