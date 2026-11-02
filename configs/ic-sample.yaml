@@ -1,8 +1,8 @@
 # Linux x64；三个提交：初始状态 → 修改局部实现 → 恢复。
-# 只编译 Debug 测试二进制，不执行测试。
+# 只编译 Debug 产品可执行文件，不编译或运行测试。
 repository: https://github.com/vibingkevin/native-ic-sample.git
-branch: eval-private-body-roundtrip
-start_commit: 0242491d3cc84a9376d597fd032b4757e75424a0
-end_commit: eb65b7ad32e2851755f8ec7477d65d8012c60b11
+branch: main
+start_commit: e571e536a43ff2564572f010c881e62c9e2f7dba
+end_commit: 6864a8382d35830318f0e491e474b712d778cd7f
 direction: forward
-task: :app:linkDebugTestLinuxX64
+task: :app:linkDebugExecutableLinuxX64

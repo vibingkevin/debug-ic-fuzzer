@@ -118,12 +118,12 @@ def replay(project, variants, revisions, destination, store):
     return int(failed)
 
 
-def run(compilers_path: Path, projects_path: Path, destination: Path) -> int:
+def run(compilers_path: Path, project_path: Path, destination: Path) -> int:
     compilers = Compilers.model_validate(yaml.safe_load(compilers_path.read_text())).compilers
     if set(compilers) != {"baseline", "sut"}:
         raise Invalid("compilers 必须同时提供 baseline 和 sut")
-    project = Project.model_validate(yaml.safe_load(projects_path.read_text()))
-    project.gradle_args = expand_args(project.gradle_args, projects_path.parent)
+    project = Project.model_validate(yaml.safe_load(project_path.read_text()))
+    project.gradle_args = expand_args(project.gradle_args, project_path.parent)
     destination.mkdir(parents=True, exist_ok=False)
     write_json(destination / "config.json", dict(compilers={k: v.model_dump(mode="json") for k, v in compilers.items()},
                                                project=project.model_dump()))
@@ -167,13 +167,13 @@ def run(compilers_path: Path, projects_path: Path, destination: Path) -> int:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compilers", required=True, type=Path)
-    parser.add_argument("--projects", required=True, type=Path)
+    parser.add_argument("--project", required=True, type=Path)
     args = parser.parse_args()
-    destination = (Path("runs") / f"{args.compilers.stem}-{args.projects.stem}").resolve()
+    destination = (Path("runs") / f"{args.compilers.stem}-{args.project.stem}").resolve()
     if destination.exists():
         parser.error(f"运行目录已存在，请先移走或删除：{destination}")
     try:
-        return run(args.compilers.resolve(), args.projects.resolve(), destination)
+        return run(args.compilers.resolve(), args.project.resolve(), destination)
     except (Invalid, ValueError, OSError, yaml.YAMLError, tarfile.TarError, subprocess.CalledProcessError) as error:
         write_json(destination / "error.json", dict(status="INVALID", error=str(error)))
         print(f"INVALID: {error}", file=sys.stderr)

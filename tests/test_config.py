@@ -90,7 +90,7 @@ def test_cli_records_failure_in_named_run_and_preserves_previous(tmp_path, monke
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(sys, 'argv', ['debug-ic-fuzzer',
         '--compilers', f'configs/compiler pair.{extension}',
-        '--projects', f'configs/sample.{extension}'])
+        '--project', f'configs/sample.{extension}'])
     # 缺少配置也应把错误记录到推导出的目录；重跑不能覆盖已有结果。
     assert main() == 2
     error = tmp_path / 'runs/compiler pair-sample/error.json'
@@ -126,10 +126,10 @@ def test_same_default_native_cache_rejected(tmp_path):
     from debug_ic_fuzzer import run
     compilers = tmp_path / 'compilers.yaml'
     compilers.write_text('compilers:\n  baseline: {kotlin_version: "2.4.21"}\n  sut: {kotlin_version: "2.4.21"}\n')
-    projects = tmp_path / 'projects.yaml'
-    projects.write_text('{repository: https://example.test/sample.git, branch: main, start_commit: a, end_commit: b, task: ":link"}')
+    project = tmp_path / 'project.yaml'
+    project.write_text('{repository: https://example.test/sample.git, branch: main, start_commit: a, end_commit: b, task: ":link"}')
     with pytest.raises(Invalid, match='不同的编译器目录'):
-        run(compilers, projects, tmp_path / 'run')
+        run(compilers, project, tmp_path / 'run')
 
 
 @pytest.mark.parametrize('repository', ['../sample', '/tmp/sample', 'file:///tmp/sample'])
