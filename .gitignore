@@ -6,3 +6,5 @@ build/
 dist/
 runs/
 docs/*.delivery.json
+configs/*.tgz
+configs/*.tar.gz

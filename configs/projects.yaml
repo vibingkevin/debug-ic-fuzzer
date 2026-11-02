@@ -1,0 +1,7 @@
+repository: "https://github.com/vibingkevin/native-ic-sample.git" # 仅支持 Git URL，不支持本地路径。
+branch: "main"                        # 要回放的分支；包含开始和结束提交。
+start_commit: "1233b13"
+end_commit: "1233b13"
+direction: forward                    # forward：起→止；reverse：止→起。
+task: ":app:linkDebugTestLinuxX64"      # 自动获取产物和 IC 路径。
+# gradle_args: ["-Pfeature=true"]      # 可选；路径用 {config_dir} 指代本 YAML 所在目录。
