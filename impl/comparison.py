@@ -73,7 +73,7 @@ def save_product_contents(variant_results: dict):
     # This is the only place that resolves recorded paths after the worktrees move back.
     for variant, build_result in variant_results.items():
         run_directory = Path(build_result["cwd"]).parent
-        for entry in build_result.get("artifacts", []):
+        for entry in build_result.get("artifacts") or []:
             path = run_directory / variant / Path(entry["path"]).relative_to("project")
             snapshot_file(path, entry["path"], run_directory / "store")
 
@@ -82,11 +82,19 @@ def compare_products(variant_results: dict) -> dict:
     """Compare baseline/sut artifact records and save original products on strict differences.
 
     Args:
-        variant_results: Baseline/sut records with cwd, artifact paths, and both MD5s.
+        variant_results: Baseline/sut records with task state, cwd, artifact paths, and both MD5s.
 
     Return strict_equal and production_equal, plus differing path lists on strict
-    differences. Missing files count as differences; equal records require no file reads.
+    differences. Both UP-TO-DATE skips comparison with null equality fields; only one
+    UP-TO-DATE saves available products and returns an error. Missing files count as
+    differences; equal records require no file reads.
     """
+    up_to_date = [result["task_state"] == "UP-TO-DATE" for result in variant_results.values()]
+    if any(up_to_date):
+        if all(up_to_date):
+            return dict(strict_equal=None, production_equal=None, skipped="Both Native links are UP-TO-DATE")
+        save_product_contents(variant_results)
+        return {"error": "Native link execution states differ: only one variant is UP-TO-DATE"}
     baseline, sut = ({f["path"]: f for f in variant_results[name]["artifacts"]} for name in ("baseline", "sut"))
     missing = baseline.keys() ^ sut.keys()
     common = baseline.keys() & sut.keys()

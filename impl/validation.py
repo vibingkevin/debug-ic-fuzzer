@@ -17,7 +17,7 @@ def validate_link_result(build_result: dict) -> str | None:
         return "The final Native link must not be restored from Build Cache"
     link = build_result["link"]
     if link is None:
-        return "Expected one Native link or UP-TO-DATE with a previously executed link"
+        return "Expected one Native link"
     if Path(link["home"]).resolve() != Path(build_result["native_home"]):
         return "Actual Native home does not match the configuration"
     output = Path(link["output"])

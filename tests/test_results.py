@@ -20,7 +20,7 @@ def product_records(tmp_path):
         source.write_text("int value(void) { return 1; }\n")
         subprocess.run(["cc", "-g", "-shared", "-fPIC", str(source), "-o", str(output)], check=True)
         (output.parent / "libdemo_api.h").write_text("int value(void);\n")
-        results[name] = dict(variant=name, cwd=str(tmp_path / "project"), link={"output": str(tmp_path / "project/build/libdemo.so")})
+        results[name] = dict(variant=name, task_state="EXECUTED", cwd=str(tmp_path / "project"), link={"output": str(tmp_path / "project/build/libdemo.so")})
     # Start with byte-identical product_records, independent of the host linker's defaults.
     shutil.copyfile(tmp_path / "baseline/build/libdemo.so", tmp_path / "sut/build/libdemo.so")
     return results
@@ -165,3 +165,28 @@ def test_strip_error_retains_hashes_and_can_save_after_restore(tmp_path, product
     for f in product_records["baseline"]["artifacts"]:
         name = Path(f["path"]).name
         assert (tmp_path / "store" / name / f"{name}-{f['md5']}").is_file()
+
+
+@pytest.mark.parametrize("skipped_variants", [("baseline", "sut"), ("baseline",), ("sut",)])
+def test_up_to_date_comparison(tmp_path, product_records, skipped_variants):
+    """Check skipped comparisons and saving of executed products under tmp_path.
+
+    product_records supplies real ELF files; skipped_variants selects records without
+    current link metadata or artifact hashes.
+    """
+    for variant in skipped_variants:
+        product_records[variant].update(task_state="UP-TO-DATE", link=None, artifacts=None)
+    executed = {variant: record for variant, record in product_records.items() if variant not in skipped_variants}
+    collect_pair_products(executed)
+    comparison = compare_products(product_records)
+    if not executed:
+        assert comparison == dict(strict_equal=None, production_equal=None, skipped="Both Native links are UP-TO-DATE")
+        assert not (tmp_path / "store").exists()
+    else:
+        assert "only one variant is UP-TO-DATE" in comparison["error"]
+        for variant, record in executed.items():
+            for artifact in record["artifacts"]:
+                filename = Path(artifact["path"]).name
+                stored = tmp_path / "store" / filename / f"{filename}-{artifact['md5']}"
+                original = tmp_path / variant / Path(artifact["path"]).relative_to("project")
+                assert stored.read_bytes() == original.read_bytes()

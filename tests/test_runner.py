@@ -180,7 +180,7 @@ sys.exit(7 if home.endswith('fail') else 0)
     assert not (run_directory / "project").exists()
 
 
-@pytest.mark.parametrize("failure", [None, "baseline", "sut", "production", "debug", "collection"])
+@pytest.mark.parametrize("failure", [None, "baseline", "sut", "production", "debug", "collection", "both-up-to-date", "baseline-up-to-date", "sut-up-to-date"])
 def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     """Verify replay order and stopping with fake builds writing records under tmp_path.
 
@@ -189,6 +189,7 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     """
     import debug_ic_fuzzer as runner
     from impl.config import Compilers
+    from impl.comparison import compare_products
 
     monkeypatch.chdir(tmp_path)
     compilers = Compilers(compilers={name: Compiler(kotlin_version="2.4.21") for name in ("baseline", "sut")})
@@ -196,7 +197,7 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     monkeypatch.setattr(runner, "load_config", lambda path, model: compilers if model is Compilers else project)
     monkeypatch.setattr(runner, "resolve_native_home", lambda compiler, *_: Path("/baseline") if compiler is compilers.compilers["baseline"] else Path("/sut"))
     monkeypatch.setattr(runner, "prepare_repository", lambda *_: (tmp_path / "repo", ["a", "b", "c"]))
-    created, calls = [], []
+    created, calls, collected, saved = [], [], [], []
     active = False
 
     @contextmanager
@@ -215,20 +216,20 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     monkeypatch.setattr(runner, "activate_worktree", fake_activate_worktree)
     monkeypatch.setattr(runner, "create_detached_worktree", lambda bare_repository, worktree_directory, commit_id: created.append((worktree_directory.name, commit_id)))
 
-    def fake_build_project(project_directory, project_config, compiler_config, native_home, record_stem, previous_link):
+    def fake_build_project(project_directory, project_config, compiler_config, native_home, record_stem):
         """Write a fake build log beside project_directory and return an injected build result.
 
-        record_stem identifies the test commit and variant; previous_link must match prior
-        metadata. project_config supplies resolved Gradle arguments to check. compiler_config
+        record_stem identifies the test commit and variant. project_config supplies
+        resolved Gradle arguments to check. compiler_config
         and native_home are unused arguments matching build_project.
         """
         assert active
         _, commit_id, variant = record_stem.split("-")
         calls.append((commit_id, variant))
-        assert previous_link == (None if commit_id == "a" else {"task": ":app:link"})
         assert project_config.gradle_args == [f"-Pfixture={tmp_path}/fixture"]
         (project_directory.parent / f"{record_stem}.gradle.log").write_text("completed")
-        return dict(cwd=str(project_directory), exit_code=int(commit_id == "b" and variant == failure), error=None, link={"task": ":app:link"}), []
+        skipped = commit_id == "b" and failure in ("both-up-to-date", f"{variant}-up-to-date")
+        return dict(cwd=str(project_directory), exit_code=int(commit_id == "b" and variant == failure), error=None, task_state="UP-TO-DATE" if skipped else "EXECUTED", link=None if skipped else {"task": ":app:link"}), []
 
     monkeypatch.setattr(runner, "build_project", fake_build_project)
 
@@ -238,6 +239,7 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
         cache_roots and store_directory are unused inputs matching collect_cache_files.
         """
         assert active
+        collected.append(calls[-1])
         if failure == "collection" and calls[-1] == ("b", "baseline"):
             raise ValueError("Cache is outside the project")
         return []
@@ -250,53 +252,71 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     def fake_compare_products(variant_results):
         """Use variant_results' baseline commit to inject differences after worktrees are parked."""
         assert not active
+        if any(result["task_state"] == "UP-TO-DATE" for result in variant_results.values()):
+            return compare_products(variant_results)
         changed = failure in ("production", "debug") and variant_results["baseline"]["commit"] == "b"
         return dict(strict_equal=not changed, production_equal=not (changed and failure == "production"))
 
     monkeypatch.setattr(runner, "collect_cache_files", fake_collect_cache_files)
     monkeypatch.setattr(runner, "collect_product_hashes", fake_collect_product_hashes)
     monkeypatch.setattr(runner, "save_product_contents", lambda *_: None)
+    monkeypatch.setattr("impl.comparison.save_product_contents", lambda results: saved.append(results))
     monkeypatch.setattr(runner, "compare_products", fake_compare_products)
-    assert replay_commits(tmp_path / "compilers.yaml", tmp_path / "project.yaml") == int(failure not in (None, "debug"))
+    assert replay_commits(tmp_path / "compilers.yaml", tmp_path / "project.yaml") == int(failure not in (None, "debug", "both-up-to-date"))
     assert created == [("baseline", "a"), ("sut", "a")]
-    revisions = ["a", "b"] if failure not in (None, "debug") else ["a", "b", "c"]
+    revisions = ["a", "b"] if failure not in (None, "debug", "both-up-to-date") else ["a", "b", "c"]
     assert calls == [(sha, name) for sha in revisions for name in ("baseline", "sut")]
     (run_directory,) = (tmp_path / "run").iterdir()
     assert len(list(run_directory.glob("*.json"))) == len(calls) + len(revisions)
     for index, sha in enumerate(revisions):
         for name in ("baseline", "sut"):
             record_name = f"{index:04d}-{sha}-{name}"
-            assert json.loads((run_directory / f"{record_name}.json").read_text())["commit"] == sha
+            record = json.loads((run_directory / f"{record_name}.json").read_text())
+            assert record["commit"] == sha
+            if record["task_state"] == "UP-TO-DATE":
+                assert record["link"] is record["cache_files"] is record["artifacts"] is None
+                assert (sha, name) not in collected
+            else:
+                assert (sha, name) in collected
             assert (run_directory / f"{record_name}.gradle.log").is_file()
+    if failure in ("both-up-to-date", "baseline-up-to-date", "sut-up-to-date"):
+        comparison = json.loads((run_directory / "0001-b-comparison.json").read_text())
+        if failure == "both-up-to-date":
+            assert comparison["strict_equal"] is comparison["production_equal"] is None
+            assert "skipped" in comparison
+            assert not saved
+        else:
+            assert "only one variant is UP-TO-DATE" in comparison["error"]
+            assert len(saved) == 1
 
 
-@pytest.mark.parametrize("state,previous,output,valid", [("UP-TO-DATE", True, True, True), ("UP-TO-DATE", False, True, False), ("UP-TO-DATE", True, False, False), ("FROM-CACHE", True, True, False)])
-def test_skipped_link(tmp_path, monkeypatch, state, previous, output, valid):
-    """Check skipped-link validation using fake Gradle output under tmp_path.
+@pytest.mark.parametrize(
+    "task_line,expected_state,error",
+    [("> Task :app:link UP-TO-DATE", "UP-TO-DATE", None), ("> Task :app:link FROM-CACHE", "FROM-CACHE", "Build Cache"), ("> Task :app:link", "EXECUTED", "Expected one Native link"), ("> Task :other:task", None, "Expected one Native link")],
+)
+def test_task_state_without_link(tmp_path, monkeypatch, task_line, expected_state, error):
+    """Check task-state parsing with no link metadata or existing products in tmp_path.
 
-    monkeypatch replaces subprocess execution. state is the reported task state; previous
-    enables prior link metadata, output enables an existing product, and valid is the
-    expected validation outcome.
+    monkeypatch replaces Gradle execution; task_line is its output, expected_state is the
+    parsed state, and error is the expected validation message fragment or None.
     """
-    from contextlib import contextmanager
     import importlib
 
     builder = importlib.import_module("impl.build")
 
-    def gradle(command, cwd, stdout, **kwargs):
-        """Write the selected task state to stdout and return success for command.
-
-        cwd and kwargs are unused subprocess options accepted by the fake runner.
-        """
-        stdout.write(f"> Task :app:link {state}\n")
+    def fake_gradle(command, cwd, stdout, **kwargs):
+        """Write task_line to stdout and return success for command; cwd/kwargs are unused process options."""
+        stdout.write(task_line + "\n")
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(builder.subprocess, "run", gradle)
+    monkeypatch.setattr(builder.subprocess, "run", fake_gradle)
     (tmp_path / "project").mkdir()
-    if output:
-        (tmp_path / "project/app.kexe").touch()
-    link = dict(home="/compiler", output=str(tmp_path / "project/app.kexe"), ic_cache_dir=str(tmp_path / "project/build/ic"), built_caches=str(tmp_path / "project/missing-old-report.txt"))
     project = Project(repository="https://example.test/project.git", branch="main", start_commit="a", end_commit="b", task=":app:link")
-    result, _ = build_project(tmp_path / "project", project, Compiler(kotlin_version="2.4.21"), Path("/compiler"), "0001-b-baseline", link if previous else None)
-    assert (result["error"] is None) == valid
-    assert result["task_state"] == state
+    result, cache_roots = build_project(tmp_path / "project", project, Compiler(kotlin_version="2.4.21"), Path("/compiler"), "0001-b-baseline")
+    assert result["task_state"] == expected_state
+    assert result["link"] is None
+    if error is None:
+        assert result["error"] is None
+        assert cache_roots == []
+    else:
+        assert error in result["error"]

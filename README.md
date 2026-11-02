@@ -40,12 +40,14 @@ Logs include konanc arguments, without normalization or deduplication.
 A failed build or result check still saves the record and allows the other variant of that commit to run, then stops replay.
 Records contain the command, compiler path, duration, exit code, final link details, `cache_files`, and `artifacts`.
 Each commit also writes `0000-<commit12>-comparison.json` with `strict_equal` and `production_equal`.
+If both links are UP-TO-DATE, both equality fields are null with a `skipped` reason; replay continues.
+If only one link is UP-TO-DATE, save the executed side's products, record an execution-state error, and stop.
 Production differences or collection errors stop replay; differences only in the unstripped product do not.
 Missing files are differences. Compiler caches are collected, not compared during replay.
 
 Collection and comparison:
 
-- `cache_files`: scan the single `-Xic-cache-dir` and the compiler's `klib/cache`, after every build including UP-TO-DATE.
+- `cache_files`: scan the single `-Xic-cache-dir` and the compiler's `klib/cache` after builds whose link is not UP-TO-DATE.
   Record `path`, `md5`, and `mtime_ns`. Paths start with `project/` or `native-home/`, never baseline/sut.
 - Cache `metadata.properties` and `bitcode_deps` are saved after converting line endings to LF and stripping surrounding whitespace.
   Remove `compilerFingerprint` from metadata before hashing and saving. Cache `.a`, IR, and other files are hashed as bytes but not saved.
@@ -69,18 +71,18 @@ All projects, runs, and both compiler variants share this directory and reuse do
 The tool root is the working directory from which you launch the runner; `.gradle-home/` is ignored by Git.
 Build Cache and Configuration Cache follow project settings; only the final Native link is excluded from Build Cache reads and writes.
 The capture action supports Configuration Cache and does not disable UP-TO-DATE checks.
-The initial product build in each fresh worktree must execute the link task.
-Later UP-TO-DATE links reuse the previously reported task metadata and check that the output still exists.
-Records include the link task state. There is no comparison with previous results.
+UP-TO-DATE links retain the command, task state, duration, and log, with null `link`, `cache_files`, and `artifacts`.
+They do not collect existing outputs or reuse metadata from previous commits.
+Execution-state mismatch is a test failure requiring investigation, not proof of a compiler bug.
 
 `debug_ic_fuzzer.py` coordinates both variants. `impl/config.py` handles configuration and distributions;
 `impl/repository.py` prepares repositories; `impl/build.py` runs Gradle, parses the completed log once,
-and resolves cache paths, including reused UP-TO-DATE metadata.
+and resolves cache paths for executed links.
 `impl/validation.py` checks link results, cache boundaries, and the current invocation's built-cache report.
 `impl/collection.py` only accepts directories and a store, then snapshots files; it does not read build logs or task states.
 `impl/comparison.py` collects product hashes and compares records.
 Both collectors run inside `project`; each build JSON is written once before the worktree moves back.
-`build_project` groups project directory/config, compiler config/home, and log stem/previous link metadata.
+`build_project` groups project directory/config, compiler config/home, and the log stem.
 The replay loop expands config placeholders and adds commit/variant fields; run paths come from the project directory's parent.
 Platform-specific production normalization stays in `compute_production_md5`; future iOS support can reuse the record format.
 `capture.init.gradle` overrides KGP, excludes the final link from Build Cache, reports the actual compiler path, and requests the built-cache archive list.

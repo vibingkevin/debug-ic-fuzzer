@@ -25,7 +25,7 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path) -> in
         project_config_path: Configuration file defining the repository, commit range, and Gradle task.
 
     Returns:
-        0 if all pairs pass production comparison, otherwise 1. Writes results and
+        0 if all pairs pass or both links are UP-TO-DATE, otherwise 1. Writes results and
         worktrees under the current directory; configuration/setup errors propagate.
     """
     compilers = load_config(compilers_config_path, Compilers).compilers
@@ -42,24 +42,23 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path) -> in
         for variant in ("baseline", "sut"):
             create_detached_worktree(bare_repository, run_directory / variant, commit_ids[0])
         failed = False
-        previous_links = {"baseline": None, "sut": None}
         for commit_index, commit_id in enumerate(commit_ids):
             variant_results = {}
             for variant in ("baseline", "sut"):
                 record_stem = f"{commit_index:04d}-{commit_id[:12]}-{variant}"
                 with activate_worktree(bare_repository, run_directory / variant, commit_id) as project_directory:
-                    build_result, cache_roots = build_project(project_directory, project_config, compilers[variant], native_homes[variant], record_stem, previous_links[variant])
-                    build_result.update(commit=commit_id, variant=variant)
+                    build_result, cache_roots = build_project(project_directory, project_config, compilers[variant], native_homes[variant], record_stem)
+                    build_result.update(commit=commit_id, variant=variant, cache_files=None, artifacts=None)
                     try:
-                        build_result["cache_files"] = collect_cache_files(cache_roots, run_directory / "store")
-                        if build_result["exit_code"] == 0 and build_result["error"] is None:
-                            collect_product_hashes(build_result)
+                        if build_result["task_state"] != "UP-TO-DATE":
+                            build_result["cache_files"] = collect_cache_files(cache_roots, run_directory / "store")
+                            if build_result["exit_code"] == 0 and build_result["error"] is None:
+                                collect_product_hashes(build_result)
                     except (ValueError, OSError, subprocess.CalledProcessError) as error:
                         build_result["error"] = build_result["error"] or str(error)
                     variant_results[variant] = build_result
                     (run_directory / f"{record_stem}.json").write_text(json.dumps(build_result, ensure_ascii=False, indent=2) + "\n")
                 failed |= build_result["exit_code"] != 0 or build_result["error"] is not None
-                previous_links[variant] = build_result["link"]
                 print(f"{commit_index:04d} {commit_id[:12]} {variant}: exit={build_result['exit_code']} error={build_result['error']}", flush=True)
             comparison = {"error": "Build or collection failed"}
             try:
@@ -71,7 +70,7 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path) -> in
                 comparison = {"error": str(error)}
             (run_directory / f"{commit_index:04d}-{commit_id[:12]}-comparison.json").write_text(json.dumps(comparison, indent=2) + "\n")
             print(f"{commit_index:04d} comparison: {comparison}", flush=True)
-            failed |= comparison.get("production_equal") is not True
+            failed |= "error" in comparison or comparison.get("production_equal") is False
             if failed:
                 break
         print(run_directory, flush=True)
