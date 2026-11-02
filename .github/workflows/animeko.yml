@@ -1,0 +1,56 @@
+name: Animeko
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: animeko-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    name: macos-arm64
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-home
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: jetbrains
+          java-version: '21'
+      - name: Install Python dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -e '.[test]'
+      - name: Restore dependency downloads
+        uses: actions/cache@v5
+        with:
+          path: |
+            .gradle-home/caches/modules-2
+            .gradle-home/wrapper/dists
+            .konan/dependencies
+          key: animeko-dependencies-macos-arm64-${{ hashFiles('configs/compilers.yaml', 'configs/animeko.yaml') }}
+      - name: Replay Animeko
+        run: |
+          export JDK_JBR="$JAVA_HOME"
+          .venv/bin/python debug_ic_fuzzer.py --compilers configs/compilers.yaml --project configs/animeko.yaml
+      - name: Upload replay results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: animeko-macos-arm64
+          retention-days: 7
+          path: |
+            run/*/*.json
+            run/*/*.csv
+            run/*/*.log
+            run/*/store/**
