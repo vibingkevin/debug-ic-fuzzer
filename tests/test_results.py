@@ -1,4 +1,5 @@
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 
@@ -11,6 +12,8 @@ from impl.comparison import collect_product_hashes, compare_products, save_produ
 @pytest.fixture
 def product_records(tmp_path):
     """Build identical baseline/sut ELF libraries and headers under tmp_path; return link records."""
+    if platform.system() != "Linux":
+        pytest.skip("Requires Linux ELF tools")
     source = tmp_path / "source.c"
     results = {}
     for name in ("baseline", "sut"):

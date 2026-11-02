@@ -5,7 +5,7 @@ description = "Kotlin/Native Debug IC commit replay with baseline and sut"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{name = "Kevin", email = "kevin.dev@foxmail.com"}]
-dependencies = ["PyYAML>=6,<7", "pydantic>=2,<3"]
+dependencies = ["PyYAML>=6,<7", "pydantic>=2,<3", "macholib>=1.16.3,<2"]
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10"]

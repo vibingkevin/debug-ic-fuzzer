@@ -1,15 +1,18 @@
 # debug-ic-fuzzer
 
 Replay a commit range with baseline and sut, using the same absolute project path and separate worktrees and project/dependency caches; compiler system caches may be shared.
-Build and compare Linux products, and collect Native cache snapshots. No functional tests, cross-commit analysis, or automatic clean.
+Build and compare Linux products or iOS frameworks, and collect Native cache snapshots. No functional tests, cross-commit analysis, or automatic clean.
 
-Requires Linux x64, Python 3.12+, Git, a JDK, and `llvm-strip`. iOS framework comparison is not implemented.
+Requires Python 3.12+, Git, and a JDK. Linux x64 requires `llvm-strip` on PATH (for example, install the `llvm` package on Ubuntu).
+iOS frameworks require an Apple Silicon Mac with Xcode selected by `xcode-select`; comparison uses `xcrun strip`, `codesign`, and the installed `macholib` dependency.
 
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install -e '.[test]'
 .venv/bin/debug-ic-fuzzer --compilers configs/compilers.yaml --project configs/project.yaml
 ```
+
+For iOS use `--project configs/ic-sample-ios.yaml` and a compiler configuration with macOS distributions, or omit both Native homes to let KGP download them.
 
 Compiler and project configurations are separate YAML files in `configs/`.
 Relative CLI configuration paths resolve from `PROJECT_ROOT`, independent of the shell working directory.
@@ -63,10 +66,15 @@ Collection and comparison:
   Record `path`, `md5`, and `mtime_ns`. Known paths use `project/`, `auto-cache/`, or `native-home/` prefixes; other reported paths remain absolute.
 - Cache `metadata.properties` and `bitcode_deps` are saved after converting line endings to LF and stripping surrounding whitespace.
   Remove `compilerFingerprint` from metadata before hashing and saving. Cache `.a`, IR, and other files are hashed as bytes but not saved.
-- `artifacts`: inspect the final Linux product directory (`.kexe`, or `.so` plus its generated `.h`).
+- `artifacts`: inspect the final product directory (`.kexe`, `.so` plus its generated `.h`, or a flat iOS `.framework` with its sibling `.dSYM`).
   Each file records `path`, raw `md5`, `production_md5`, and `mtime_ns`.
   The production view strips ELF symbols/debug information and removes `.note.gnu.build-id`; headers use normalized text.
   Other output files use their original bytes. The original files are never modified.
+- Dynamic framework binaries use a temporary copy stripped of debug/local symbols, code signatures, and UUID values.
+  Static frameworks strip debug information and normalize archive timestamps, preserving symbols and relocations needed for linking.
+  Framework headers, modulemaps, Info.plist, and resources participate in production comparison.
+  dSYM files have null `production_md5` and participate only in strict comparison, including when present on only one side.
+  This supports individual iOS frameworks, not XCFramework containers or versioned macOS framework symlinks.
 - Compare file sets and raw MD5s for strict equality, and production MD5s for production equality.
   Save both variants' original product contents only on differences or errors. Only this save step translates paths back to baseline/sut.
   Equal products retain both hashes without saving contents. Temporary production views are always deleted.
@@ -97,7 +105,7 @@ Execution-state mismatch is a test failure requiring investigation, not proof of
 Both collectors run inside `project`; each build JSON is written once before the worktree moves back.
 `build_project` groups project directory/config, compiler config/home/auto-cache, and the log stem.
 The replay loop expands config placeholders and adds commit/variant fields; run paths come from the project directory's parent.
-Platform-specific production normalization stays in `compute_production_md5`; future iOS support can reuse the record format.
+`compute_production_md5` selects production normalization; `impl/apple.py` handles Mach-O and static Apple archives.
 `capture.init.gradle` overrides KGP, excludes the final link from Build Cache, reports the actual compiler path, and requests the built-cache archive list.
 
 ### Inlining options
@@ -116,7 +124,7 @@ Kotlin 2.4 defaults to intra-module early inlining; 2.5 extends this to cross-mo
 See the [official release notes](https://kotlinlang.org/docs/whatsnew-eap.html#consistent-cross-module-function-inlining-during-klib-compilation).
 These are compiler options, not Gradle arguments. This tool does not set inlining options.
 
-Tests also require `cc` and `objcopy` for small ELF fixtures.
+Linux tests also require `cc` and `objcopy` for small ELF fixtures. macOS tests build dynamic/static framework fixtures with Xcode tools; tests for the other platform are skipped.
 
 ```sh
 .venv/bin/python -m pytest -q
@@ -133,4 +141,4 @@ python -m ruff format .
 
 Use `python -m ruff format --check .` to check without changing files.
 The pinned Ruff version reads `pyproject.toml`: 240-column lines and no forced wrapping from trailing commas.
-Formatting needs no editor extension; the fuzzer itself still targets Linux.
+Formatting needs no editor extension.

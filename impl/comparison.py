@@ -6,21 +6,31 @@ import subprocess
 import tempfile
 
 from impl.collection import is_within_directory, normalize_text_content, snapshot_file
+from impl.apple import compute_apple_production_md5, is_apple_binary
 
 
 def find_product_files(build_result: dict) -> dict[str, Path]:
     """Find final product files while build_result's cwd points to the active project.
 
     build_result supplies cwd and link.output. Return recorded project paths mapped to physical
-    files beside the output; require Linux ELF, a header for .so, and no file symlinks.
+    files beside the output, including framework dSYM files. Require Linux ELF or an
+    Apple framework binary, generated headers for libraries, and no file symlinks.
     """
     project = Path(build_result["cwd"])
     output = Path(build_result["link"]["output"])
-    if not is_within_directory(output, project) or not output.is_file():
-        raise ValueError("Expected a Linux product file inside the project")
-    with output.open("rb") as stream:
-        if stream.read(4) != b"\x7fELF":
-            raise ValueError("Only Linux ELF products are supported; iOS is not implemented")
+    framework = output.suffix == ".framework"
+    binary = output / output.stem if framework else output
+    if not is_within_directory(output, project) or not binary.is_file():
+        raise ValueError("Expected a product binary inside the project")
+    with binary.open("rb") as stream:
+        header = stream.read(8)
+    if framework:
+        if not is_apple_binary(header):
+            raise ValueError("Expected a Mach-O binary or static archive in the framework")
+        if not list((output / "Headers").glob("*.h")) or not (output / "Info.plist").is_file() or not (output / "Modules/module.modulemap").is_file():
+            raise ValueError("The framework's headers, Info.plist, or modulemap are missing")
+    elif header[:4] != b"\x7fELF":
+        raise ValueError("Expected a Linux ELF product or an Apple framework")
     files = {}
     for path in sorted(output.parent.rglob("*")):
         if path.is_symlink():
@@ -32,17 +42,22 @@ def find_product_files(build_result: dict) -> dict[str, Path]:
     return files
 
 
-def compute_production_md5(product_path: Path, scratch_directory: Path) -> str:
+def compute_production_md5(product_path: Path, scratch_directory: Path) -> str | None:
     """Return the MD5 of product_path's production view without changing the original file.
 
-    product_path is the product file. scratch_directory holds a temporary stripped ELF
-    copy without its build ID. Normalize headers as text; hash other files unchanged.
+    product_path is the product file; scratch_directory holds temporary normalized binaries.
+    Strip ELF debug data/build ID or normalize Apple binaries. Normalize headers as text;
+    hash other files unchanged. Return None for dSYM files, which are debug-only artifacts.
     """
+    if any(parent.suffix == ".dSYM" for parent in product_path.parents):
+        return None
     if product_path.suffix == ".h":
         return hashlib.md5(normalize_text_content(product_path.read_bytes(), product_path.name)).hexdigest()
     with product_path.open("rb") as stream:
-        elf = stream.read(4) == b"\x7fELF"
-    if elf:
+        header = stream.read(8)
+    if is_apple_binary(header):
+        return compute_apple_production_md5(product_path, scratch_directory)
+    if header[:4] == b"\x7fELF":
         output = scratch_directory / "product"
         subprocess.run(["llvm-strip", "--strip-all", "--remove-section=.note.gnu.build-id", "-o", str(output), str(product_path)], check=True, capture_output=True, text=True)
         product_path = output
@@ -100,7 +115,9 @@ def compare_products(variant_results: dict) -> dict:
     missing = baseline.keys() ^ sut.keys()
     common = baseline.keys() & sut.keys()
     strict_diff = sorted(missing | {p for p in common if baseline[p]["md5"] != sut[p]["md5"]})
-    production_diff = sorted(missing | {p for p in common if baseline[p]["production_md5"] != sut[p]["production_md5"]})
+    production_baseline = {path: entry["production_md5"] for path, entry in baseline.items() if entry["production_md5"] is not None}
+    production_sut = {path: entry["production_md5"] for path, entry in sut.items() if entry["production_md5"] is not None}
+    production_diff = sorted((production_baseline.keys() ^ production_sut.keys()) | {path for path in production_baseline.keys() & production_sut.keys() if production_baseline[path] != production_sut[path]})
     comparison = dict(strict_equal=not strict_diff, production_equal=not production_diff)
     if strict_diff:
         save_product_contents(variant_results)
