@@ -1,73 +1,35 @@
 import groovy.json.JsonOutput
 
-// 显式 Action 只保存值，配置缓存恢复时不依赖 Project 或脚本实例。
-class CaptureNativeLink implements Action<Task>, Serializable {
-    File evidence
-    String root
-    String expectedHome
+// Action 仅保存值，Configuration Cache 恢复后仍能执行。
+class ReportNativeLink implements Action<Task>, Serializable {
     String version
-
     void execute(Task task) {
-        evidence.mkdirs()
-        def home = new File(task.konanHome.get()).canonicalPath
-        if (home != expectedHome)
-            throw new GradleException("实际编译器目录与配置不一致：${home}")
-        new File(evidence, task.path.replace(':', '_') + '.task.json').text = JsonOutput.toJson([
-            task: task.path, cwd: root, home: home, kotlin_version: version,
+        task.logger.lifecycle('IC_FUZZER ' + JsonOutput.toJson([
+            task: task.path, kotlin_version: version,
+            home: new File(task.konanHome.get()).canonicalPath,
             output: task.outputFile.get().absolutePath
-        ])
+        ]))
     }
 }
 
-// 不修改被测项目：拦截插件解析，核验实际 KGP，仅观测指定的最终链接。
-def version = System.getenv('IC_EVAL_KOTLIN')
-def evidence = new File(System.getenv('IC_EVAL_CAPTURE'))
-def expectedHome = new File(System.getenv('IC_EVAL_HOME')).canonicalPath
-def selectedTask = System.getenv('IC_EVAL_TASK')
+def version = gradle.startParameter.projectProperties['ic.kotlin.version']
+def requestedTasks = gradle.startParameter.taskNames
+if (requestedTasks.size() != 1) throw new GradleException('只能指定一个最终 Native link 任务')
+
 gradle.settingsEvaluated { settings ->
-    if (gradle.parent == null && gradle.startParameter.taskNames != [selectedTask])
-        throw new GradleException("一次只能请求配置中的一个最终构建目标：${selectedTask}")
-    // 同步约定插件使用的版本目录，避免父项目加载新插件后子项目仍请求旧版本。
-    settings.dependencyResolutionManagement.versionCatalogs.configureEach { catalog ->
-        catalog.version('kotlin', version)
-    }
+    settings.dependencyResolutionManagement.versionCatalogs.configureEach { it.version('kotlin', version) }
     settings.pluginManagement.resolutionStrategy.eachPlugin {
         if (requested.id.id.startsWith('org.jetbrains.kotlin.')) useVersion(version)
     }
 }
 gradle.projectsEvaluated {
-    def root = gradle.rootProject.projectDir.canonicalPath
-    gradle.rootProject.allprojects { p ->
-        def kotlin = p.extensions.findByName('kotlin')
-        if (kotlin == null || !kotlin.hasProperty('targets')) return
-        def plugin = p.plugins.findPlugin('org.jetbrains.kotlin.multiplatform')
-        if (plugin != null) {
-            def actual = plugin.class.classLoader.loadClass('org.jetbrains.kotlin.config.KotlinCompilerVersion').getField('VERSION').get(null)
-            if (actual != version) throw new GradleException("Kotlin 插件实际版本 ${actual} 与配置 ${version} 不一致")
-        }
-        kotlin.targets.configureEach { target ->
-            if (!target.hasProperty('konanTarget')) return
-            target.compilations.configureEach { compilation ->
-                compilation.compileTaskProvider.configure { task ->
-                    task.compilerOptions.freeCompilerArgs.add("-Xklib-relative-path-base=${root}")
-                }
-            }
-            target.binaries.configureEach { binary ->
-                // 第三方单库 cache 的 DWARF 会写入编译器目录，发行包解压路径也需要映射。
-                def compilerRoot = expectedHome
-                def mapping = "-Xdebug-prefix-map=${root}=/project,${compilerRoot}=/compiler"
-                binary.freeCompilerArgs += mapping
-                binary.freeCompilerArgs += "-Xoverride-konan-properties=additionalCacheFlags.${target.konanTarget.name}=${mapping}"
-            }
-        }
-        p.tasks.configureEach { task ->
-            if (task.path != selectedTask || !task.class.name.contains('KotlinNativeLink')) return
-            def id = task.path.replace(':', '_')
-            task.toolOptions.freeCompilerArgs.add("-Xdump-built-caches-to=${new File(evidence, id + '.rebuilt')}")
-            // 保留 UP-TO-DATE；仅禁止最终链接从 Build Cache 恢复，依赖任务不受影响。
-            task.outputs.doNotCacheIf('需要观测 Native IC，不能恢复历史链接产物') { true }
-            task.doFirst(new CaptureNativeLink(evidence: evidence, root: root,
-                                              expectedHome: expectedHome, version: version))
-        }
-    }
+    if (gradle.parent != null) return
+    def task = gradle.rootProject.tasks.getByPath(requestedTasks[0])
+    if (!task.class.name.contains('KotlinNativeLink')) throw new GradleException('目标必须是 Native link 任务')
+    def plugin = task.project.plugins.findPlugin('org.jetbrains.kotlin.multiplatform')
+    def actual = plugin.class.classLoader.loadClass('org.jetbrains.kotlin.config.KotlinCompilerVersion').getField('VERSION').get(null)
+    if (actual != version) throw new GradleException("KGP 实际版本 ${actual} 与配置 ${version} 不一致")
+    // 只限制最终 link 的 Build Cache，保留 Configuration Cache、UP-TO-DATE 和依赖任务缓存。
+    task.outputs.doNotCacheIf('需要执行 Native IC，不能恢复历史链接产物') { true }
+    task.doFirst(new ReportNativeLink(version: version))
 }

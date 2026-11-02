@@ -1,8 +1,9 @@
 # debug-ic-fuzzer
 
-逐提交比较 baseline / sut 的 Kotlin/Native Debug 增量编译结果，记录缓存重编，并在终点或异常时做 clean 对照。
+编译所选第一笔 commit 的 baseline 和 sut，使用同一工程绝对路径、独立 worktree 和 Native cache。
+当前只做两次产品编译，不遍历后续提交，不运行功能测试，不比较产物或统计重编。
 
-需要 Python 3.12+、JDK、Git 和项目所需构建环境。
+需要 Python 3.12+、Git、JDK；支持 Linux x64、Apple Silicon Mac。iOS 构建还需 Xcode。
 
 ```sh
 python3 -m venv .venv
@@ -10,46 +11,45 @@ python3 -m venv .venv
 .venv/bin/debug-ic-fuzzer --compilers configs/compilers.yaml --project configs/project.yaml
 ```
 
-配置集中在 `configs/`，编译器与项目分开。把两版发行包分别放到 `configs/baseline.tgz`、`configs/sut.tgz`，或在 `compilers.yaml` 指定目录/压缩包；版本号按实际填写。`kotlin_native_home` 可省略，KGP 按 `kotlin_version` 使用或下载 prebuilt 编译器，位置为 `$KONAN_DATA_DIR/kotlin-native-prebuilt-<平台>-<架构>-<版本>`；未设置该环境变量时使用 `~/.konan`。两版指向同一缓存目录仍会报错。编译器相对路径以编译器 YAML 为准。项目 YAML 顶层直接填写一个项目，只指定一个完整任务路径；`gradle_args` 中用 `{config_dir}` 替换项目 YAML 所在目录，例如 `["-I", "{config_dir}/custom.init.gradle"]`，其余内容原样传给 Gradle。结果固定写入当前目录下的 `runs/<编译器 YAML 文件名>-<项目 YAML 文件名>/`（不含扩展名）；已有目录需先移走或删除。结果见 `results/summary.json`，文件内容按 MD5 去重保存。
+配置在 `configs/`，编译器和项目分开。`forward` 编译 `start_commit`，`reverse` 编译 `end_commit`。
+Native home 指定目录时必须是绝对路径；`.tgz`/`.tar.gz` 可相对编译器 YAML，每次重新解压到 `/tmp`，运行结束删除。
+不指定 home 时，只覆盖 KGP 版本，由 KGP 下载配套 Native 到 `$KONAN_DATA_DIR`（默认 `~/.konan`）。
+不传 `kotlin.native.version`；两版解析到同一 Native home 就报错。
+`gradle_args` 原样传给 Gradle，`{config_dir}` 替换为项目 YAML 所在目录。
 
-仓库仅支持 Git URL，固定复用 `/tmp/debug-ic-fuzzer/<仓库名>-<URL摘要>/` 下的一份 clone 和一个 worktree。已有仓库会更新并切到指定分支。两版编译前轮流改名为同一 `project` 目录，结束后恢复，源码和构建缓存各自独立；首笔只清理工具记录的 IC 和产物目录，Gradle User Home 沿用用户环境（默认 `~/.gradle`），不再给两版单独建下载缓存。同一仓库不能同时跑两轮。
+运行流程：
 
-[执行流程](docs/execution-flow.html)（下载后用浏览器打开） · [编译器配置](configs/compilers.yaml) · [项目配置](configs/project.yaml) · [ic-sample 局部实现回放](configs/ic-sample.yaml) · [Animeko iOS 配置](configs/animeko.yaml) · [较长区间回放配置](configs/animeko-expanded.yaml)
+1. 在 `repos/` clone 或更新公共 bare 仓库。
+2. 创建 `run/<编译器配置名>-<项目配置名>-<timestamp>/`，从仓库创建两份 worktree。
+3. 用 `git worktree move` 将 baseline 移到 `project`，运行指定 Gradle task，再移回。
+4. sut 执行相同流程。日志直接写文件，编译结束后统一读取。
 
-```sh
-.venv/bin/python -m pytest
-```
+每版结果各写一个 `baseline.json`/`sut.json`，完整 Gradle 日志（含 konanc 调用参数）保存到共享
+`store/gradle.log/gradle.log_<md5>`，文本统一 LF、去除首尾空白后去重。构建失败也保存日志并继续另一版。
+只记录命令、编译器路径、耗时、退出码、最终 link 信息；暂不扫描、保存编译产物和 IC 文件。
+源码和输出留在各自 worktree。`repos/`、`run/` 均不入 Git。
 
-已验证 Kotlin 2.4.21 原版 A/A：Linux x64 正逆回放，以及 Animeko iOS 三个静态 framework 的连续 12 提交正逆回放，均通过增量与 clean 对照，Animeko 正逆同提交结果也一致。缓存越界会记录后停止，不适配自定义 autoCacheDir。
+沿用 `GRADLE_USER_HOME`，未指定时使用全局 `~/.gradle`，不清理下载缓存。
+Build Cache、Configuration Cache 沿用项目设置；仅禁止最终 Native link 读取和写入 Build Cache。
+采集 Action 兼容 Configuration Cache，不强制关闭 UP-TO-DATE。当前新 worktree 的首次产品构建必须实际执行 link。
 
-Animeko（macOS）准备好 YAML 注释中的构建环境后运行：
+`debug_ic_fuzzer.py` 调度两版；`impl/config.py` 处理配置和发行包；`impl/repository.py` 准备仓库；
+`impl/build.py` 执行并记录单次构建。`capture.init.gradle` 覆盖 KGP 版本、限制最终 link 缓存并输出实际编译器路径。
 
-```sh
-.venv/bin/debug-ic-fuzzer --compilers configs/compilers.yaml --project configs/animeko.yaml
-```
+### 内联选项
 
-Animeko 两份配置均只编译应用实际接入的 `application.framework`（iOS Simulator ARM64 Debug），保留上游动态链接设置；区别仅在回放提交区间。之前三个工具模块的静态 framework 测试结果不代表完整应用 framework 已通过。
+demo 使用默认内联行为，场景提交不切换内联选项。Kotlin/Native 2.4.21 的 `-Xklib-ir-inliner=` 支持：
 
-`debug_ic_fuzzer.py` 负责入口与回放；内部实现放在 `impl/`：`config.py` 管配置，`build.py` 管构建采集，`results.py` 管存储比较。
-
-ic-sample 按提交回放源码变化，不应用 patch，也不设置特殊内联选项。产品构建任务为 `:app:linkDebugExecutableLinuxX64` 或 `:app:linkDebugFrameworkIosSimulatorArm64`；功能断言在 `commonTest`，由 `linuxX64Test` 等任务单独验证，不作为 fuzzer 的构建任务。
-
-Configuration Cache 和 Build Cache 沿用项目设置；仅禁止最终被测 link 从 Build Cache 恢复，允许 `UP-TO-DATE`。临时采集路径固定，每次构建前清除旧记录，结束后归档到当前提交；未执行 link 时仍比较现有产物，不沿用旧重编清单。新实验清理两版各自根目录下的 `.gradle`、`.kotlin`，回放中保留状态；clean 对照清除已登记的 IC 和最终产物。
-
-### KLIB 提前内联选项
-
-内联模式与 demo 的源码场景独立，不编码进场景提交。工具不主动设置内联选项。
-Kotlin/Native 2.4.21 的 `-Xklib-ir-inliner=<模式>` 支持：
-
-| 模式 | 生成 KLIB 时的行为 |
+| 值 | 生成 KLIB 时的行为 |
 |---|---|
-| `default`（不指定） | 按语言版本选择默认模式 |
-| `intra-module` | 提前内联当前模块内的 inline 函数 |
-| `full` | 也提前内联依赖模块中的 inline 函数 |
-| `disabled` | 关闭这个阶段的提前内联，后续 Native 内联仍可进行 |
+| `default` | 根据语言版本选择默认模式 |
+| `intra-module` | 提前内联本模块的 inline 函数 |
+| `full` | 同时提前内联依赖模块的 inline 函数；2.4.21 会标记 KLIB 为 pre-release |
+| `disabled` | 关闭该阶段的提前内联，后续 Native 内联仍可发生 |
 
-2.4 默认启用模块内提前内联，2.5 默认扩展到跨模块内联，见[官方说明](https://kotlinlang.org/docs/whatsnew-eap.html#consistent-cross-module-function-inlining-during-klib-compilation)。
-2.4.21 的 `full` 会给生成的 KLIB 标记 pre-release。
-旧的 `-XXLanguage:-IrIntraModuleInlinerBeforeKlibSerialization` 关闭模块内提前内联；demo 不使用它。
-提前内联会把函数体变化带进调用方 KLIB，因此不同模式下的 cache 重编数量可能不同。
-这些是编译器参数，不能直接当作 Gradle 参数放进 `gradle_args`。
+2.4 默认模块内提前内联，2.5 扩展到跨模块内联，见[官方说明](https://kotlinlang.org/docs/whatsnew-eap.html#consistent-cross-module-function-inlining-during-klib-compilation)。
+这些是编译器参数，不能直接当作 Gradle 参数传入。本工具不设置内联选项。
+
+```sh
+.venv/bin/python -m pytest -q
+```

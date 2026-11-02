@@ -4,4 +4,4 @@ compilers:
     kotlin_native_home: "./baseline.tgz"   # 可省略：KGP 下载到 KONAN_DATA_DIR（默认 ~/.konan）。
   sut:
     kotlin_version: "2.4.21"
-    kotlin_native_home: "./sut.tgz"        # 目录或压缩包，相对本 YAML；包解压到 /tmp。两版不能共用缓存。
+    kotlin_native_home: "./sut.tgz"        # 目录必须为绝对路径；压缩包可相对本 YAML，每次解压到 /tmp。

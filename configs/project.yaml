@@ -1,4 +1,4 @@
-# 完整场景回放，共 20 笔；iOS 可改用 :app:linkDebugFrameworkIosSimulatorArm64。
+# 当前只编译区间第一笔；iOS 可改用 :app:linkDebugFrameworkIosSimulatorArm64。
 repository: "https://github.com/vibingkevin/native-ic-sample.git" # 仅支持 Git URL，不支持本地路径。
 branch: "main"                        # 要回放的分支；包含开始和结束提交。
 start_commit: "db60251d556ced9a5849a022689df443538afea6"
