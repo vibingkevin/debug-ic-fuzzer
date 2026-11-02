@@ -11,3 +11,4 @@ configs/*.tar.gz
 repos/
 run/
 .gradle-home/
+.ruff_cache/

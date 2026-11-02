@@ -104,3 +104,16 @@ Tests also require `cc` and `objcopy` for small ELF fixtures.
 ```sh
 .venv/bin/python -m pytest -q
 ```
+
+### Formatting
+
+With a Python 3.12+ environment active, the same commands work on Linux, macOS, and Windows:
+
+```sh
+python -m pip install -e ".[test,format]"
+python -m ruff format .
+```
+
+Use `python -m ruff format --check .` to check without changing files.
+The pinned Ruff version reads `pyproject.toml`: 240-column lines and no forced wrapping from trailing commas.
+Formatting needs no editor extension; the fuzzer itself still targets Linux.
