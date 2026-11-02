@@ -8,7 +8,7 @@ import sys
 import time
 
 from impl.config import Compiler, Project
-from impl.validation import validate_result
+from impl.validation import validate_caches, validate_result
 
 
 def init_script() -> Path:
@@ -31,7 +31,7 @@ def build(
     config_dir: Path,
     record_name: str,
     last_link: dict | None = None,
-) -> dict:
+) -> tuple[dict, list[tuple[Path, str]]]:
     log = destination / f"{record_name}.gradle.log"
     started = time.monotonic()
     command = [
@@ -74,6 +74,19 @@ def build(
     link = calls[0] if len(calls) == 1 else None
     if not calls and task_state == "UP-TO-DATE":
         link = last_link
+    options = [line.strip() for line in log_text.splitlines()]
+    cache_paths = []
+    for arg in options:
+        if arg.startswith(("-Xauto-cache-dir=", "-Xcache-directory=")):
+            cache_paths.append(arg.split("=", 1)[1])
+        elif arg.startswith("-Xcached-library="):
+            cache_paths.append(arg.split("=", 1)[1].split(",", 1)[1])
+    report_path = None
+    if link is not None and task_state != "UP-TO-DATE":
+        directories = {arg.split("=", 1)[1] for arg in options if arg.startswith("-Xic-cache-dir=")}
+        if len(directories) == 1:
+            link["ic_cache_dir"] = directories.pop()
+        report_path = link.get("built_caches")
     result = dict(
         commit=revision,
         variant=name,
@@ -88,4 +101,9 @@ def build(
         log=log.name,
     )
     result["error"] = validate_result(result)
-    return result
+    roots = [(home / "klib/cache", "native-home/klib/cache")]
+    try:
+        roots = validate_caches(result, cache_paths, report_path)
+    except (ValueError, OSError) as error:
+        result["error"] = result["error"] or str(error)
+    return result, roots

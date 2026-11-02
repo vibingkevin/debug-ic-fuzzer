@@ -69,6 +69,7 @@ out = pathlib.Path.cwd() / 'build/app.kexe'
 out.parent.mkdir(exist_ok=True)
 out.write_text('output')
 print('IC_FUZZER ' + json.dumps(dict(home=home, output=str(out))))
+print('-Xic-cache-dir=' + str(pathlib.Path.cwd() / 'build/ic'))
 sys.exit(7 if home.endswith('fail') else 0)
 ''')
     (source / 'gradlew').chmod(0o755)
@@ -111,7 +112,7 @@ sys.exit(7 if home.endswith('fail') else 0)
     for name, home in [('baseline', Path('/compiler/fail')), ('sut', Path('/downloaded'))]:
         compiler = Compiler(kotlin_version='2.4.21', kotlin_native_home=home if name == 'baseline' else None)
         with checkout_worktree(repository, destination / name, first) as active:
-            result = build(active, destination, name, first, project, compiler, home, tmp_path, f'0000-{first[:12]}-{name}')
+            result, _ = build(active, destination, name, first, project, compiler, home, tmp_path, f'0000-{first[:12]}-{name}')
         assert result['exit_code'] == (7 if name == 'baseline' else 0)
         assert result['error'] is None
         assert result['log'] == f'0000-{first[:12]}-{name}.gradle.log'
@@ -173,13 +174,14 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
         assert last_link == (None if revision == 'a' else {'task': ':app:link'})
         (destination / f'{record_name}.gradle.log').write_text('completed')
         return dict(commit=revision, variant=name, exit_code=int(revision == 'b' and name == failure),
-                    error=None, link={'task': ':app:link'})
+                    error=None, link={'task': ':app:link'}), []
 
     monkeypatch.setattr(runner, 'build', fake_build)
     def collect_result(result, destination):
         assert active
-        if failure == 'collection' and result['commit'] == 'b' and result['variant'] == 'baseline':
+        if failure == 'collection' and calls[-1] == ('b', 'baseline'):
             raise ValueError('Cache is outside the project')
+        return []
 
     def compare_results(results, destination):
         assert not active
@@ -222,10 +224,12 @@ def test_skipped_link(tmp_path, monkeypatch, state, previous, output, valid):
     (tmp_path / 'project').mkdir()
     if output:
         (tmp_path / 'project/app.kexe').touch()
-    link = dict(home='/compiler', output=str(tmp_path / 'project/app.kexe'))
+    link = dict(home='/compiler', output=str(tmp_path / 'project/app.kexe'),
+                ic_cache_dir=str(tmp_path / 'project/build/ic'),
+                built_caches=str(tmp_path / 'project/missing-old-report.txt'))
     project = Project(repository='https://example.test/project.git', branch='main',
                       start_commit='a', end_commit='b', task=':app:link')
-    result = build(tmp_path / 'project', tmp_path, 'baseline', 'b', project, Compiler(kotlin_version='2.4.21'),
+    result, _ = build(tmp_path / 'project', tmp_path, 'baseline', 'b', project, Compiler(kotlin_version='2.4.21'),
                    Path('/compiler'), tmp_path, '0001-b-baseline', link if previous else None)
     assert (result['error'] is None) == valid
     assert result['task_state'] == state

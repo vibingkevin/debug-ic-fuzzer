@@ -6,6 +6,7 @@ import pytest
 
 from impl.collection import collect
 from impl.comparison import collect_products, compare, save_artifacts
+from impl.validation import validate_caches
 
 
 @pytest.fixture
@@ -104,46 +105,40 @@ def test_cache_snapshot_normalization_dedup_and_no_binary_contents(tmp_path):
     native = tmp_path / 'native/klib/cache'
     native.mkdir(parents=True)
     (native / 'bitcode_deps').write_text('stdlib\n')
-    record = dict(variant='baseline', cwd=str(tmp_path / 'project'), native_home=str(tmp_path / 'native'),
-                  link={}, task_state='EXECUTED', exit_code=0, log='gradle.log')
-    (tmp_path / 'gradle.log').write_text(f'\t-Xic-cache-dir={tmp_path}/project/build/ic\n')
-    collect(record, tmp_path)
-    first = next(f for f in record['cache_files'] if f['path'].endswith('metadata.properties'))
+    roots = [(root, 'project/build/ic'), (native, 'native-home/klib/cache')]
+    files = collect(roots, tmp_path / 'store')
+    first = next(f for f in files if f['path'].endswith('metadata.properties'))
     metadata.write_text('hash=abc\ncompilerFingerprint=new\n')
-    collect(record, tmp_path)
-    second = next(f for f in record['cache_files'] if f['path'].endswith('metadata.properties'))
+    files = collect(roots, tmp_path / 'store')
+    second = next(f for f in files if f['path'].endswith('metadata.properties'))
     assert first['md5'] == second['md5']
     assert len(list((tmp_path / 'store/metadata.properties').iterdir())) == 1
     assert not (tmp_path / 'store/code.a').exists()
     assert not (tmp_path / 'store/inline_bodies').exists()
-    assert len(record['cache_files']) == 4
-    assert all(f['path'].startswith(('project/', 'native-home/')) for f in record['cache_files'])
-    # UP-TO-DATE must still inspect current files using the previous link metadata.
-    record['task_state'] = 'UP-TO-DATE'
-    (tmp_path / 'gradle.log').write_text('')
-    collect(record, tmp_path)
-    assert len(record['cache_files']) == 4
+    assert len(files) == 4
+    assert all(f['path'].startswith(('project/', 'native-home/')) for f in files)
 
 
 @pytest.mark.parametrize('escape', ['ic', 'auto', 'archive', 'symlink'])
 def test_cache_boundary_errors(tmp_path, escape):
     (tmp_path / 'project/build/ic').mkdir(parents=True)
-    record = dict(variant='baseline', cwd=str(tmp_path / 'project'), native_home=str(tmp_path / 'native'),
-                  link={}, task_state='EXECUTED', exit_code=0, log='gradle.log')
-    log = f'-Xic-cache-dir={tmp_path}/project/build/ic\n'
+    record = dict(cwd=str(tmp_path / 'project'), native_home=str(tmp_path / 'native'),
+                  link={'ic_cache_dir': str(tmp_path / 'project/build/ic')}, exit_code=0)
+    cache_paths = []
+    report = None
     if escape == 'ic':
-        log = f'-Xic-cache-dir={tmp_path}/outside\n'
+        record['link']['ic_cache_dir'] = str(tmp_path / 'outside')
     elif escape == 'auto':
-        log += f'-Xauto-cache-dir={tmp_path}/outside\n'
+        cache_paths = [str(tmp_path / 'outside')]
     elif escape == 'archive':
-        record['link']['built_caches'] = str(tmp_path / 'project/build/built.txt')
-        (tmp_path / 'project/build/built.txt').write_text(str(tmp_path / 'outside.a'))
+        report = str(tmp_path / 'project/build/built.txt')
+        Path(report).write_text(str(tmp_path / 'outside.a'))
     else:
         (tmp_path / 'outside.a').touch()
         (tmp_path / 'project/build/ic/escape.a').symlink_to(tmp_path / 'outside.a')
-    (tmp_path / 'gradle.log').write_text(log)
     with pytest.raises(ValueError, match='outside|symlink'):
-        collect(record, tmp_path)
+        roots = validate_caches(record, cache_paths, report)
+        collect(roots, tmp_path / 'store')
 
 
 def test_strip_error_retains_hashes_and_can_save_after_restore(tmp_path, products, monkeypatch):

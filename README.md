@@ -74,9 +74,11 @@ Later UP-TO-DATE links reuse the previously reported task metadata and check tha
 Records include the link task state. There is no comparison with previous results.
 
 `debug_ic_fuzzer.py` coordinates both variants. `impl/config.py` handles configuration and distributions;
-`impl/repository.py` prepares repositories; `impl/build.py` runs and records a single build.
-`impl/validation.py` checks the completed build's link state, compiler path, and output.
-`impl/collection.py` snapshots caches and writes the store; `impl/comparison.py` collects product hashes and compares records.
+`impl/repository.py` prepares repositories; `impl/build.py` runs Gradle, parses the completed log once,
+and resolves cache paths, including reused UP-TO-DATE metadata.
+`impl/validation.py` checks link results, cache boundaries, and the current invocation's built-cache report.
+`impl/collection.py` only accepts directories and a store, then snapshots files; it does not read build logs or task states.
+`impl/comparison.py` collects product hashes and compares records.
 Both collectors run inside `project`; each build JSON is written once before the worktree moves back.
 Platform-specific production normalization stays in `production_digest`; future iOS support can reuse the record format.
 `capture.init.gradle` overrides KGP, excludes the final link from Build Cache, reports the actual compiler path, and requests the built-cache archive list.

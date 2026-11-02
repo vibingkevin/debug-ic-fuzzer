@@ -37,10 +37,10 @@ def run(compilers_path: Path, project_path: Path) -> int:
             for name in ('baseline', 'sut'):
                 record_name = f'{index:04d}-{revision[:12]}-{name}'
                 with checkout_worktree(repository, destination / name, revision) as project_directory:
-                    result = build(project_directory, destination, name, revision, project, compilers[name],
+                    result, cache_roots = build(project_directory, destination, name, revision, project, compilers[name],
                                    homes[name], project_path.parent, record_name, last_links[name])
                     try:
-                        collect(result, destination)
+                        result["cache_files"] = collect(cache_roots, destination / "store")
                         if result['exit_code'] == 0 and result['error'] is None:
                             collect_products(result, destination)
                     except (ValueError, OSError, subprocess.CalledProcessError) as error:

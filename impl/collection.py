@@ -36,50 +36,9 @@ def inside(path: Path, root: Path) -> bool:
     return path.resolve().is_relative_to(root.resolve())
 
 
-def collect(result: dict, destination: Path):
-    """Collect while all compiler-reported project paths still exist."""
-    files = result["cache_files"] = []
-    link = result["link"]
-    project = Path(result["cwd"])
-    native = Path(result["native_home"]) / "klib/cache"
-    roots = [(native, "native-home/klib/cache")]
-    options = [line.strip() for line in (destination / result["log"]).read_text(errors="replace").splitlines()]
-    if link is not None:
-        if result["task_state"] != "UP-TO-DATE":
-            directories = {s.split("=", 1)[1] for s in options if s.startswith("-Xic-cache-dir=")}
-            if len(directories) == 1:
-                link["ic_cache_dir"] = directories.pop()
-        if "ic_cache_dir" in link:
-            ic = Path(link["ic_cache_dir"])
-            if not ic.is_relative_to(project):
-                raise ValueError(f"IC cache is outside the project: {ic}")
-            if not inside(ic, project):
-                raise ValueError(f"IC cache escapes the worktree: {ic}")
-            roots.append((ic, str(Path("project") / ic.relative_to(project))))
-        elif result["exit_code"] == 0:
-            raise ValueError("Expected one -Xic-cache-dir for the final link")
-
-    def checked_cache(path: str):
-        actual = Path(path)
-        if not any(inside(actual, root) for root, _ in roots):
-            raise ValueError(f"Cache path is outside tracked roots: {path}")
-
-    # Inspect explicit cache overrides as well as archives reported by the compiler.
-    for arg in options:
-        if arg.startswith(("-Xauto-cache-dir=", "-Xcache-directory=")):
-            checked_cache(arg.split("=", 1)[1])
-        elif arg.startswith("-Xcached-library="):
-            checked_cache(arg.split("=", 1)[1].split(",", 1)[1])
-    if link and result["task_state"] != "UP-TO-DATE" and "built_caches" in link:
-        report = Path(link["built_caches"])
-        if not report.is_relative_to(project):
-            raise ValueError("Built-cache report is outside the project")
-        if report.exists():
-            for archive in report.read_text().splitlines():
-                if archive:
-                    checked_cache(archive)
-        elif result["exit_code"] == 0:
-            raise ValueError("The compiler did not write its built-cache report")
+def collect(roots: list[tuple[Path, str]], store: Path) -> list[dict]:
+    """Snapshot the supplied directories without knowing about builds or task states."""
+    files = []
     for root, logical in roots:
         if root.is_symlink():
             raise ValueError(f"Cache root symlinks are unsupported: {root}")
@@ -89,4 +48,5 @@ def collect(result: dict, destination: Path):
             if path.is_file():
                 text = path.name in CACHE_TEXT
                 files.append(snapshot(path, str(Path(logical) / path.relative_to(root)),
-                                      destination / "store", save=text, text=text))
+                                      store, save=text, text=text))
+    return files

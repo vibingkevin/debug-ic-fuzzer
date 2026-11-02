@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from impl.collection import inside
+
 
 def validate_result(result: dict) -> str | None:
     if result["exit_code"] != 0:
@@ -20,3 +22,31 @@ def validate_result(result: dict) -> str | None:
     if not output.exists():
         return "Final output does not exist"
     return None
+
+
+def validate_caches(result: dict, cache_paths: list[str], report_path: str | None) -> list[tuple[Path, str]]:
+    """Validate resolved cache locations and this invocation's archive report."""
+    project = Path(result["cwd"])
+    roots = [(Path(result["native_home"]) / "klib/cache", "native-home/klib/cache")]
+    link = result["link"]
+    if link is not None:
+        if "ic_cache_dir" in link:
+            ic = Path(link["ic_cache_dir"])
+            if not ic.is_relative_to(project) or not inside(ic, project):
+                raise ValueError(f"IC cache is outside the project: {ic}")
+            roots.append((ic, str(Path("project") / ic.relative_to(project))))
+        elif result["exit_code"] == 0:
+            raise ValueError("Expected one -Xic-cache-dir for the final link")
+    paths = list(cache_paths)
+    if report_path is not None:
+        report = Path(report_path)
+        if not inside(report, project):
+            raise ValueError("Built-cache report is outside the project")
+        if report.exists():
+            paths.extend(path for path in report.read_text().splitlines() if path)
+        elif result["exit_code"] == 0:
+            raise ValueError("The compiler did not write its built-cache report")
+    for path in paths:
+        if not any(inside(Path(path), root) for root, _ in roots):
+            raise ValueError(f"Cache path is outside tracked roots: {path}")
+    return roots
