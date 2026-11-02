@@ -19,12 +19,12 @@ Equal endpoints build one commit. Invalid endpoints or direction stop the run be
 A Native home directory must be absolute. A `.tgz` or `.tar.gz` path may be relative to the compiler YAML;
 archives are extracted into fresh `/tmp` directories for each run and removed when the run ends.
 Without a home, the tool overrides KGP and lets it download the matching Native distribution into `$KONAN_DATA_DIR` (default: `~/.konan`).
-The tool does not pass `kotlin.native.version`. Both variants resolving to the same Native home is an error.
+The tool does not pass `kotlin.native.version`. Both variants resolving to the same Native cache directory is an error.
 `gradle_args` are passed through, replacing `{config_dir}` with the project YAML directory.
 
 Each run:
 
-1. Clone or update the shared bare repository in `repos/`.
+1. Clone or update `repos/<repository-name>.git`. Different URLs with the same repository name use separate remotes; matching URLs reuse the existing remote.
 2. Create `run/<compiler-config>-<project-config>-<timestamp>/` and two independent worktrees at the first commit in replay order.
    The timestamp uses `YYYYMMDD-HHMMSS`; an existing directory is an error.
 3. Move baseline to `project`, check out the commit, run Gradle, parse the log, validate, collect caches and product hashes, and write its JSON.

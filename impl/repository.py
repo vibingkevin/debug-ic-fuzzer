@@ -2,7 +2,6 @@
 
 from contextlib import contextmanager
 from pathlib import Path
-import hashlib
 import subprocess
 
 from impl.config import Project
@@ -33,13 +32,19 @@ def checkout_worktree(repository: Path, variant_directory: Path, commit: str):
 def prepare_repository(root: Path, project: Project) -> tuple[Path, list[str]]:
     root.mkdir(parents=True, exist_ok=True)
     name = project.repository.rsplit("/", 1)[-1].removesuffix(".git")
-    key = hashlib.md5(project.repository.encode()).hexdigest()[:8]
-    repository = root / f"{name}-{key}.git"
+    repository = root / f"{name}.git"
     if not repository.exists():
         subprocess.run(["git", "clone", "--bare", project.repository, str(repository)], check=True)
+    remotes = _run_git(repository, "remote").splitlines()
+    for remote in remotes:
+        if _run_git(repository, "remote", "get-url", remote) == project.repository:
+            break
+    else:
+        remote = f"remote-{len(remotes)}"
+        _run_git(repository, "remote", "add", remote, project.repository)
     # Update the remote ref without changing any worktree HEAD.
-    ref = f"refs/remotes/origin/{project.branch}"
-    _run_git(repository, "fetch", "origin", f"+refs/heads/{project.branch}:{ref}")
+    ref = f"refs/remotes/{remote}/{project.branch}"
+    _run_git(repository, "fetch", remote, f"+refs/heads/{project.branch}:{ref}")
     history = _run_git(repository, "rev-list", "--first-parent", "--reverse", ref).splitlines()
     start = _run_git(repository, "rev-parse", "--verify", project.start_commit + "^{commit}")
     end = _run_git(repository, "rev-parse", "--verify", project.end_commit + "^{commit}")

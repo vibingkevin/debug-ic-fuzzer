@@ -25,8 +25,8 @@ def run(compilers_path: Path, project_path: Path) -> int:
     destination.mkdir(parents=True)
     with ExitStack() as temporary:
         homes = {name: prepare_home(c, compilers_path.parent, temporary) for name, c in compilers.items()}
-        if homes["baseline"] == homes["sut"] or (homes["baseline"] / "klib/cache").resolve() == (homes["sut"] / "klib/cache").resolve():
-            raise ValueError("baseline and sut cannot use the same Native home or cache")
+        if (homes["baseline"] / "klib/cache").resolve() == (homes["sut"] / "klib/cache").resolve():
+            raise ValueError("baseline and sut cannot use the same Native cache")
         repository, revisions = prepare_repository(root / "repos", project)
         for name in ("baseline", "sut"):
             create_worktree(repository, destination / name, revisions[0])

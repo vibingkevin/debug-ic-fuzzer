@@ -49,9 +49,32 @@ def test_same_default_home_fails_before_clone(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "compilers.yaml").write_text('compilers:\n  baseline: {kotlin_version: "2.4.21"}\n  sut: {kotlin_version: "2.4.21"}\n')
     (tmp_path / "project.yaml").write_text("repository: https://example.test/project.git\nbranch: main\nstart_commit: a\nend_commit: a\ntask: :app:link\n")
-    with pytest.raises(ValueError, match="same Native home"):
+    with pytest.raises(ValueError, match="same Native cache"):
         run(tmp_path / "compilers.yaml", tmp_path / "project.yaml")
     assert not (tmp_path / "repos").exists()
+
+
+def test_same_named_repositories_use_separate_remotes(tmp_path):
+    projects = []
+    for owner in ("first", "second"):
+        source = tmp_path / owner / "sample"
+        subprocess.run(["git", "init", "-b", "main", str(source)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(source), "-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "--allow-empty", "-m", owner], check=True, capture_output=True)
+        commit = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+        projects.append(Project.model_construct(repository=str(source), branch="main", start_commit=commit, end_commit=commit, direction="forward"))
+
+    repository = tmp_path / "repos/sample.git"
+    for project in projects + projects:
+        assert prepare_repository(tmp_path / "repos", project) == (repository, [project.start_commit])
+    remotes = subprocess.check_output(["git", "--git-dir", str(repository), "remote"], text=True).splitlines()
+    assert remotes == ["origin", "remote-1"]
+    for remote, project in zip(remotes, projects):
+        assert subprocess.check_output(["git", "--git-dir", str(repository), "rev-parse", f"refs/remotes/{remote}/main"], text=True).strip() == project.start_commit
+
+    # A commit fetched from another remote is not part of this project's branch.
+    projects[0].start_commit = projects[1].start_commit
+    with pytest.raises(ValueError, match="selected branch"):
+        prepare_repository(tmp_path / "repos", projects[0])
 
 
 def test_shared_repository_independent_worktrees_and_failed_build(tmp_path, monkeypatch):
