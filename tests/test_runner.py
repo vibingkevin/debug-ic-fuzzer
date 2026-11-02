@@ -25,7 +25,7 @@ def test_home_paths_and_fresh_archives(tmp_path, monkeypatch):
         tar.addfile(entry, io.BytesIO(b'x'))
     with ExitStack() as stack:
         assert prepare_home(Compiler(kotlin_version='2.4.21'), tmp_path, stack) == tmp_path / 'konan/kotlin-native-prebuilt-linux-x86_64-2.4.21'
-        with pytest.raises(ValueError, match='绝对路径'):
+        with pytest.raises(ValueError, match='absolute path'):
             prepare_home(Compiler(kotlin_version='2.4.21', kotlin_native_home='relative'), tmp_path, stack)
         c = Compiler(kotlin_version='2.4.21', kotlin_native_home='compiler.tgz')
         first, second = [prepare_home(c, tmp_path, stack) for _ in range(2)]
@@ -48,7 +48,7 @@ def test_same_default_home_fails_before_clone(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / 'compilers.yaml').write_text('compilers:\n  baseline: {kotlin_version: "2.4.21"}\n  sut: {kotlin_version: "2.4.21"}\n')
     (tmp_path / 'project.yaml').write_text('repository: https://example.test/project.git\nbranch: main\nstart_commit: a\nend_commit: a\ntask: :app:link\n')
-    with pytest.raises(ValueError, match='同一个 Native home'):
+    with pytest.raises(ValueError, match='same Native home'):
         run(tmp_path / 'compilers.yaml', tmp_path / 'project.yaml')
     assert not (tmp_path / 'repos').exists()
 
@@ -58,7 +58,7 @@ def test_shared_repository_independent_worktrees_and_failed_build(tmp_path):
     subprocess.run(['git', 'init', '-b', 'main', str(source)], check=True, capture_output=True)
     def local(*args):
         return subprocess.check_output(['git', '-C', str(source), *args], text=True).strip()
-    # 用本地假 gradlew 检查真实进程启动、目录移动、失败留证及命令参数。
+    # Use a fake local gradlew to check process execution, moves, failure logs, and arguments.
     (source / 'gradlew').write_text(f'#!{sys.executable}\n' + '''import json, pathlib, sys
 args = sys.argv[1:]
 home = next((a.split('=', 1)[1] for a in args if a.startswith('-Pkotlin.native.home=')), '/downloaded')
@@ -76,7 +76,7 @@ sys.exit(7 if home.endswith('fail') else 0)
     local('add', '.')
     local('-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '-m', 'second')
     second = local('rev-parse', 'HEAD')
-    # 绕过 URL 校验以使用本地 Git fixture，正式 CLI 仍只接受远端 URL。
+    # Bypass URL validation for the local Git fixture; the CLI still requires a remote URL.
     project = Project.model_construct(repository=str(source), branch='main', start_commit=first,
                                       end_commit=second, direction='forward', task=':app:link', gradle_args=[])
     repository, revision = prepare_repository(tmp_path / 'repos', project)

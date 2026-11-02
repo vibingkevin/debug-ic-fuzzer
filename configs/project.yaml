@@ -1,8 +1,8 @@
-# 当前只编译区间第一笔；iOS 可改用 :app:linkDebugFrameworkIosSimulatorArm64。
-repository: "https://github.com/vibingkevin/native-ic-sample.git" # 仅支持 Git URL，不支持本地路径。
-branch: "main"                        # 要回放的分支；包含开始和结束提交。
+# Build only the first selected commit; for iOS use :app:linkDebugFrameworkIosSimulatorArm64.
+repository: "https://github.com/vibingkevin/native-ic-sample.git" # Git URLs only; local paths are not supported.
+branch: "main"                        # The branch must contain both endpoints.
 start_commit: "db60251d556ced9a5849a022689df443538afea6"
 end_commit: "6864a8382d35830318f0e491e474b712d778cd7f"
-direction: forward                    # forward：起→止；reverse：止→起。
-task: ":app:linkDebugExecutableLinuxX64"      # 自动获取产物和 IC 路径。
-# gradle_args: ["-Pfeature=true"]      # 可选；路径用 {config_dir} 指代本 YAML 所在目录。
+direction: forward                    # forward selects start_commit; reverse selects end_commit.
+task: ":app:linkDebugExecutableLinuxX64"      # The final product link task.
+# gradle_args: ["-Pfeature=true"]      # Optional; {config_dir} expands to this YAML directory.

@@ -1,4 +1,4 @@
-"""编译所选第一笔 commit 的 baseline 和 sut。"""
+"""Build the first selected commit with baseline and sut."""
 from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
@@ -23,7 +23,7 @@ def run(compilers_path: Path, project_path: Path) -> int:
     with ExitStack() as temporary:
         homes = {name: prepare_home(c, compilers_path.parent, temporary) for name, c in compilers.items()}
         if homes['baseline'] == homes['sut']:
-            raise ValueError('baseline 和 sut 不能使用同一个 Native home')
+            raise ValueError('baseline and sut cannot use the same Native home')
         repository, revision = prepare_repository(root / 'repos', project)
         for name in ('baseline', 'sut'):
             git(repository, 'worktree', 'add', '--detach', str(destination / name), revision)

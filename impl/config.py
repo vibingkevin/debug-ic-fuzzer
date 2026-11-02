@@ -1,4 +1,4 @@
-"""读取配置，解析两版 Native home。"""
+"""Load configuration and resolve both Native homes."""
 from contextlib import ExitStack
 from pathlib import Path
 import os
@@ -26,7 +26,7 @@ class Compilers(Config):
     @model_validator(mode='after')
     def pair(self):
         if set(self.compilers) != {'baseline', 'sut'}:
-            raise ValueError('compilers 必须同时提供 baseline 和 sut')
+            raise ValueError('compilers must define both baseline and sut')
         return self
 
 
@@ -48,10 +48,10 @@ def prepare_home(compiler: Compiler, config_dir: Path, temporary: ExitStack) -> 
     host = {('Darwin', 'arm64'): 'macos-aarch64', ('Linux', 'x86_64'): 'linux-x86_64'}.get(
         (platform.system(), platform.machine()))
     if host is None:
-        raise ValueError('仅支持 Apple Silicon Mac 和 Linux x64')
+        raise ValueError('Only Apple Silicon Mac and Linux x64 are supported')
     source = compiler.kotlin_native_home
     if source is None:
-        # 只推导路径以检查两版是否共用；下载交给 KGP，不传 native.home。
+        # Resolve the path for the sharing check; let KGP download without passing native.home.
         base = Path(os.environ.get('KONAN_DATA_DIR', str(Path.home() / '.konan')))
         return (base / f'kotlin-native-prebuilt-{host}-{compiler.kotlin_version}').resolve()
     if source.name.endswith(('.tgz', '.tar.gz')):
@@ -60,10 +60,10 @@ def prepare_home(compiler: Compiler, config_dir: Path, temporary: ExitStack) -> 
             archive.extractall(folder, filter='data')
         candidates = list(folder.glob('*/bin/konanc')) + list(folder.glob('bin/konanc'))
         if len(candidates) != 1:
-            raise ValueError(f'发行包中必须有唯一 bin/konanc：{source}')
+            raise ValueError(f'The archive must contain exactly one bin/konanc: {source}')
         return candidates[0].parent.parent.resolve()
     if not source.is_absolute():
-        raise ValueError(f'编译器目录必须是绝对路径：{source}')
+        raise ValueError(f'Compiler directory must be an absolute path: {source}')
     if not (source / 'bin/konanc').is_file():
-        raise ValueError(f'找不到 bin/konanc：{source}')
+        raise ValueError(f'Cannot find bin/konanc: {source}')
     return source.resolve()

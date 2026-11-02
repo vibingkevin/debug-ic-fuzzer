@@ -1,5 +1,5 @@
-# macOS + Xcode + CocoaPods + JDK 21 + Android SDK；复用独立的 compilers.yaml。
-# JDK_JBR 环境变量指向本机 JBR 21 目录，上游 build-logic 要求这个 vendor。
+# Requires macOS, Xcode, CocoaPods, JDK 21, and Android SDK; use a separate compilers.yaml.
+# Set JDK_JBR to a local JBR 21 directory; upstream build-logic requires this vendor.
 repository: "https://github.com/open-ani/animeko.git"
 branch: "main"
 start_commit: "b5849b0fd7934b6102fa237a8b1a2f4cd0cc885a"
@@ -7,6 +7,6 @@ end_commit: "ced27af74e10653257537d91622bcdc1a168a976"
 direction: forward
 task: ":app:shared:application:linkPodDebugFrameworkIosSimulatorArm64"
 gradle_args:
-  - "-Pani.enable.ios=true"            # 上游默认不注册 iOS 目标。
-  - "-Pani.build.framework=true"        # 注册应用实际使用的 framework。
+  - "-Pani.enable.ios=true"            # Enable the upstream iOS targets.
+  - "-Pani.build.framework=true"        # Enable the framework used by the application.
   - "-Porg.gradle.java.installations.fromEnv=JDK_JBR"

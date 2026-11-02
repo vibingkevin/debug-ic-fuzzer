@@ -1,6 +1,6 @@
 import groovy.json.JsonOutput
 
-// Action 仅保存值，Configuration Cache 恢复后仍能执行。
+// Store only values so the action can run after Configuration Cache restoration.
 class ReportNativeLink implements Action<Task>, Serializable {
     String version
     void execute(Task task) {
@@ -14,7 +14,7 @@ class ReportNativeLink implements Action<Task>, Serializable {
 
 def version = gradle.startParameter.projectProperties['ic.kotlin.version']
 def requestedTasks = gradle.startParameter.taskNames
-if (requestedTasks.size() != 1) throw new GradleException('只能指定一个最终 Native link 任务')
+if (requestedTasks.size() != 1) throw new GradleException('Specify exactly one final Native link task')
 
 gradle.settingsEvaluated { settings ->
     settings.dependencyResolutionManagement.versionCatalogs.configureEach { it.version('kotlin', version) }
@@ -25,11 +25,11 @@ gradle.settingsEvaluated { settings ->
 gradle.projectsEvaluated {
     if (gradle.parent != null) return
     def task = gradle.rootProject.tasks.getByPath(requestedTasks[0])
-    if (!task.class.name.contains('KotlinNativeLink')) throw new GradleException('目标必须是 Native link 任务')
+    if (!task.class.name.contains('KotlinNativeLink')) throw new GradleException('The target must be a Native link task')
     def plugin = task.project.plugins.findPlugin('org.jetbrains.kotlin.multiplatform')
     def actual = plugin.class.classLoader.loadClass('org.jetbrains.kotlin.config.KotlinCompilerVersion').getField('VERSION').get(null)
-    if (actual != version) throw new GradleException("KGP 实际版本 ${actual} 与配置 ${version} 不一致")
-    // 只限制最终 link 的 Build Cache，保留 Configuration Cache、UP-TO-DATE 和依赖任务缓存。
-    task.outputs.doNotCacheIf('需要执行 Native IC，不能恢复历史链接产物') { true }
+    if (actual != version) throw new GradleException("Actual KGP version ${actual} does not match configured version ${version}")
+    // Disable Build Cache only for the final link; preserve Configuration Cache, UP-TO-DATE, and dependency caching.
+    task.outputs.doNotCacheIf('Native IC must execute instead of restoring a cached link output') { true }
     task.doFirst(new ReportNativeLink(version: version))
 }

@@ -1,3 +1,4 @@
-# 开发约定
+# Development guidelines
 
-- 保持实现简单，优先复用现成库；用户提示使用直白中文。
+- Keep the implementation simple and reuse existing libraries.
+- Use English for code, comments, documentation, and tool messages.

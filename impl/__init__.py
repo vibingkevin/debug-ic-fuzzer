@@ -1,1 +1,1 @@
-"""回放工具的内部实现。"""
+"""Internal implementation of the build runner."""

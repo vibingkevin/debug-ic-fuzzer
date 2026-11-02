@@ -1,4 +1,4 @@
-"""移动工程、执行一次 Gradle、结束后记录结果。"""
+"""Move the project, run Gradle once, and record the result after completion."""
 from pathlib import Path
 import hashlib
 import json
@@ -29,7 +29,7 @@ def build(repository: Path, destination: Path, name: str, revision: str,
     log = destination / f'.{name}.log'
     started = time.monotonic()
     try:
-        # 不逐行处理；结束后解析少量任务信息，完整日志（含 konanc 参数）保留。
+        # Parse task details only after completion; keep the full log, including konanc arguments.
         with log.open('w') as output:
             code = subprocess.run(command, cwd=active, stdout=output, stderr=subprocess.STDOUT).returncode
     finally:
@@ -47,13 +47,13 @@ def build(repository: Path, destination: Path, name: str, revision: str,
     error = None
     if code == 0:
         if len(calls) != 1:
-            error = '没有实际执行唯一的 Native link（请检查目标是否支持当前宿主机）'
+            error = 'Expected one executed Native link; check whether the target supports this host'
         elif Path(calls[0]['home']).resolve() != home:
-            error = '实际 Native home 与配置不一致'
+            error = 'Actual Native home does not match the configuration'
         elif not Path(calls[0]['output']).is_relative_to(active):
-            error = '最终输出位于工程外'
+            error = 'Final output is outside the project'
         elif not (parked / Path(calls[0]['output']).relative_to(active)).exists():
-            error = '最终输出不存在'
+            error = 'Final output does not exist'
     return dict(commit=revision, variant=name, command=command, cwd=str(active),
                 kotlin_version=compiler.kotlin_version, native_home=str(home),
                 exit_code=code, error=error, seconds=seconds, link=calls[-1] if calls else None,

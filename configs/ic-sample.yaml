@@ -1,5 +1,5 @@
-# Linux x64 局部实现区间；当前只编译第一笔。
-# 只编译 Debug 产品可执行文件，不编译或运行测试。
+# Linux x64 local implementation changes; currently only the first selected commit is built.
+# Build the Debug product executable without compiling or running tests.
 repository: https://github.com/vibingkevin/native-ic-sample.git
 branch: main
 start_commit: e571e536a43ff2564572f010c881e62c9e2f7dba
