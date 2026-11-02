@@ -88,7 +88,7 @@ Sources and outputs remain in their worktrees. `repos/` and `run/` are ignored b
 The tool sets `GRADLE_USER_HOME=<tool-root>/.gradle-home` and passes the matching `--gradle-user-home`, so both the Wrapper and Gradle use the shared directory instead of the inherited home.
 All projects, runs, and both compiler variants share this directory and reuse downloaded dependencies.
 Gradle receives `KONAN_DATA_DIR=<tool-root>/.konan`, overriding the inherited environment without changing the parent process.
-The final link uses `-Xtemporary-files-dir=<run>/project/.tmp`, cleared before and after successful execution.
+The final link uses `-Xtemporary-files-dir=<run>/project/.tmp`, cleared before execution and retained afterward for inspection.
 Gradle also receives `ZERO_AR_DATE=1` to remove object timestamps from Mach-O debug maps and archive headers.
 The init script sets `-Xauto-cache-dir` to `<run>/project/.auto-cache`.
 Each worktree retains its own dependency cache; moving it to `project` gives both variants the same build path. The project IC path comes from `-Xic-cache-dir`, including module-local build directories.

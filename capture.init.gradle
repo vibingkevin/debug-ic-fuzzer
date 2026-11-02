@@ -51,7 +51,6 @@ gradle.projectsEvaluated {
     task.toolOptions.freeCompilerArgs.add("-Xtemporary-files-dir=${temporaryFiles}".toString())
     task.toolOptions.freeCompilerArgs.add("-Xdump-built-caches-to=${builtCaches}".toString())
     task.doFirst(new ReportNativeLink(version: version, builtCaches: builtCaches))
-    // Explicit temporary directories are preserved by konanc; clear them around actual links.
+    // Explicit temporary directories are preserved by konanc; clear them before actual links.
     task.doFirst(new ClearNativeTemporaryFiles(directory: temporaryFiles))
-    task.doLast(new ClearNativeTemporaryFiles(directory: temporaryFiles))
 }
