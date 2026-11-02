@@ -1,0 +1,84 @@
+name: IC sample
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '**/*.py'
+      - 'configs/**'
+      - 'capture.init.gradle'
+      - 'pyproject.toml'
+      - '.github/workflows/ic-sample.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ic-sample-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-24.04
+            native_platform: linux-x86_64
+            project: configs/ic-sample-linux.yaml
+          - platform: macos-arm64
+            runner: macos-15
+            native_platform: macos-aarch64
+            project: configs/ic-sample-ios.yaml
+    env:
+      GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-home
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Python dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -e '.[test]'
+      - name: Install ELF tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y llvm
+      - name: Restore dependency downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            .gradle-home/caches/modules-2
+            .gradle-home/wrapper/dists
+            .konan/dependencies
+          key: ic-dependencies-${{ matrix.platform }}-${{ hashFiles('configs/compilers-ci.yaml', 'configs/ic-sample-*.yaml') }}
+      - name: Download official Native compiler
+        env:
+          NATIVE_PLATFORM: ${{ matrix.native_platform }}
+        run: |
+          version=$(.venv/bin/python -c "import yaml; print(yaml.safe_load(open('configs/compilers-ci.yaml'))['compilers']['baseline']['kotlin_version'])")
+          curl --fail --location --retry 3 "https://github.com/JetBrains/kotlin/releases/download/v${version}/kotlin-native-prebuilt-${NATIVE_PLATFORM}-${version}.tar.gz" --output configs/ci-native.tar.gz
+      - name: Run unit tests
+        run: .venv/bin/python -m pytest -q
+      - name: Replay IC sample
+        run: .venv/bin/python debug_ic_fuzzer.py --compilers configs/compilers-ci.yaml --project '${{ matrix.project }}'
+      - name: Upload replay results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ic-sample-${{ matrix.platform }}
+          retention-days: 7
+          path: |
+            run/*/*.json
+            run/*/*.csv
+            run/*/*.log
+            run/*/store/**
