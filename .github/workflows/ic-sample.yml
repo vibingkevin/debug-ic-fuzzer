@@ -1,76 +1,67 @@
-name: IC sample
-
+name: ObjC GOT probe
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '**/*.py'
-      - 'configs/**'
-      - 'capture.init.gradle'
-      - 'pyproject.toml'
-      - '.github/workflows/ic-sample.yml'
-
 permissions:
   contents: read
-
-concurrency:
-  group: ic-sample-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  replay:
-    name: ${{ matrix.platform }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux-x64
-            runner: ubuntu-24.04
-            project: configs/ic-sample-linux.yaml
-          - platform: macos-arm64
-            runner: macos-15
-            project: configs/ic-sample-ios.yaml
+  probe:
+    runs-on: macos-15
+    timeout-minutes: 15
     env:
-      GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-home
-      PYTHONDONTWRITEBYTECODE: '1'
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+      ZERO_AR_DATE: '1'
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
       - name: Install Python dependencies
         run: |
           python -m venv .venv
-          .venv/bin/python -m pip install -e '.[test]'
-      - name: Install ELF tools
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y llvm
-      - name: Restore dependency downloads
-        uses: actions/cache@v5
-        with:
-          path: |
-            .gradle-home/caches/modules-2
-            .gradle-home/wrapper/dists
-            .konan/dependencies
-          key: ic-dependencies-${{ matrix.platform }}-${{ hashFiles('configs/compilers.yaml', 'configs/ic-sample-*.yaml') }}
-      - name: Run unit tests
-        run: .venv/bin/python -m pytest -q
-      - name: Replay IC sample
-        run: .venv/bin/python debug_ic_fuzzer.py --compilers configs/compilers.yaml --project '${{ matrix.project }}'
-      - name: Upload replay results
+          .venv/bin/python -m pip install -e .
+      - name: Repeat links with identical object inputs
+        run: |
+          mkdir probe-results
+          cat > probe-results/probe.m <<'EOF'
+          #import <Foundation/Foundation.h>
+          #include <objc/message.h>
+          void *dispatch_address(int use_super) {
+              return use_super ? (void *)&objc_msgSendSuper : (void *)&objc_msgSend;
+          }
+          id send_message(id object) { return [object description]; }
+          EOF
+          .venv/bin/python - <<'PY'
+          import json, pathlib, shutil, subprocess, tempfile
+          from impl.macho import compute_production_md5
+          root = pathlib.Path("probe-results").resolve()
+          summary = {}
+          for sdk, target in [("iphoneos", "arm64-apple-ios15.0"), ("iphonesimulator", "arm64-apple-ios15.0-simulator")]:
+              directory = root / sdk
+              directory.mkdir()
+              sysroot = subprocess.check_output(["xcrun", "--sdk", sdk, "--show-sdk-path"], text=True).strip()
+              flags = ["xcrun", "--sdk", sdk, "clang", "-target", target, "-isysroot", sysroot]
+              obj = directory / "probe.o"
+              product = directory / "probe.dylib"
+              subprocess.run([*flags, "-O2", "-fobjc-msgsend-selector-stubs", "-c", str(root / "probe.m"), "-o", str(obj)], check=True)
+              hashes = []
+              for iteration in range(30):
+                  subprocess.run([*flags, "-dynamiclib", str(obj), "-framework", "Foundation", "-lobjc", "-Wl,-install_name,@rpath/probe.dylib", "-o", str(product)], check=True)
+                  with tempfile.TemporaryDirectory() as scratch:
+                      digest = compute_production_md5(product, pathlib.Path(scratch))
+                  if digest not in hashes:
+                      shutil.copy2(product, directory / (digest + ".dylib"))
+                      text = subprocess.check_output(["xcrun", "otool", "-tvV", str(product)], text=True)
+                      (directory / (digest + ".asm")).write_text(text)
+                      text = subprocess.check_output(["xcrun", "otool", "-Iv", str(product)], text=True)
+                      (directory / (digest + ".symbols")).write_text(text)
+                  hashes.append(digest)
+              summary[sdk] = hashes
+              print(sdk, "unique production hashes:", sorted(set(hashes)), flush=True)
+          (root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+          PY
+      - uses: actions/upload-artifact@v6
         if: always()
-        uses: actions/upload-artifact@v6
         with:
-          name: ic-sample-${{ matrix.platform }}
+          name: objc-got-probe
           retention-days: 7
-          path: |
-            run/*/*.json
-            run/*/*.csv
-            run/*/*.log
-            run/*/store/**
+          path: probe-results/
