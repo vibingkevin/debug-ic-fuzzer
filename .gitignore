@@ -11,4 +11,5 @@ configs/*.tar.gz
 repos/
 run/
 .gradle-home/
+.konan/
 .ruff_cache/

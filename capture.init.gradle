@@ -34,6 +34,9 @@ gradle.projectsEvaluated {
     // Disable Build Cache only for the final link; preserve Configuration Cache, UP-TO-DATE, and dependency caching.
     task.outputs.doNotCacheIf('Native IC must execute instead of restoring a cached link output') { true }
     def builtCaches = new File(task.temporaryDir, 'built-caches.txt').absolutePath
+    def autoCacheDir = gradle.startParameter.projectProperties['ic.auto.cache.dir']
+    task.toolOptions.freeCompilerArgs.set(task.toolOptions.freeCompilerArgs.get().findAll { !it.startsWith('-Xauto-cache-dir=') })
+    task.toolOptions.freeCompilerArgs.add("-Xauto-cache-dir=${autoCacheDir}".toString())
     task.toolOptions.freeCompilerArgs.add("-Xdump-built-caches-to=${builtCaches}".toString())
     task.doFirst(new ReportNativeLink(version: version, builtCaches: builtCaches))
 }

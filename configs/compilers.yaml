@@ -1,7 +1,7 @@
 compilers:
   baseline:
     kotlin_version: "2.4.21"              # Override KGP and the kotlin catalog version without editing project files.
-    kotlin_native_home: "./baseline.tgz"   # Optional; KGP downloads to KONAN_DATA_DIR (default: ~/.konan).
+    kotlin_native_home: "./baseline.tgz"   # Optional; KGP downloads to the tool-local .konan directory.
   sut:
     kotlin_version: "2.4.21"
     kotlin_native_home: "./baseline.tgz"        # Directories must be absolute; archives may be relative to this YAML and are extracted to /tmp each run.

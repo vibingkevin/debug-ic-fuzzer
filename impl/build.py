@@ -2,22 +2,24 @@
 
 from pathlib import Path
 import json
+import os
 import re
 import subprocess
 import sys
 import time
 
+from impl import config
 from impl.config import Compiler, Project
 from impl.validation import validate_cache_paths, validate_link_result
 
 
 def gradle_init_script_path() -> Path:
     """Return the Gradle init script path from the source tree or installed package data."""
-    script_path = Path(__file__).parent.parent / "capture.init.gradle"
+    script_path = config.PROJECT_ROOT / "capture.init.gradle"
     return script_path if script_path.exists() else Path(sys.prefix) / "share/debug-ic-fuzzer/capture.init.gradle"
 
 
-def build_project(project_directory: Path, project_config: Project, compiler_config: Compiler, native_home: Path, record_stem: str) -> tuple[dict, list[tuple[Path, str]]]:
+def build_project(project_directory: Path, project_config: Project, compiler_config: Compiler, native_home: Path, auto_cache_directory: Path, record_stem: str) -> tuple[dict, list[tuple[Path, str]]]:
     """Run one Gradle build, then parse and validate its completed log.
 
     Args:
@@ -25,23 +27,28 @@ def build_project(project_directory: Path, project_config: Project, compiler_con
         project_config: Gradle task and arguments, with config placeholders already expanded.
         compiler_config: KGP version and whether an explicit Native home was configured.
         native_home: Resolved Native distribution to verify and, when configured, pass to Gradle.
+        auto_cache_directory: Variant-specific dependency cache beside the parked worktrees.
         record_stem: Filename stem for the Gradle log written beside the project directory.
 
     Returns:
-        The build record and (cache directory, recorded path prefix) pairs. The caller
+        The build record and reported (cache directory, recorded path prefix) pairs. The caller
         adds commit and variant metadata. Exit status and validation errors are recorded;
         process launch errors propagate. UP-TO-DATE returns no link metadata or cache roots.
     """
+    auto_cache_directory.mkdir(parents=True, exist_ok=True)
+    konan_data_directory = config.PROJECT_ROOT / ".konan"
+    konan_data_directory.mkdir(exist_ok=True)
     command = [
         str(project_directory / "gradlew"),
         project_config.task,
         *project_config.gradle_args,
         "--gradle-user-home",
-        str(Path.cwd() / ".gradle-home"),
+        str(config.PROJECT_ROOT / ".gradle-home"),
         "--console=plain",
         "-I",
         str(gradle_init_script_path()),
         f"-Pic.kotlin.version={compiler_config.kotlin_version}",
+        f"-Pic.auto.cache.dir={auto_cache_directory}",
         "-Pkotlin.incremental.native=true",
         "-Pkotlin.internal.compiler.arguments.log.level=warning",
     ]
@@ -51,7 +58,7 @@ def build_project(project_directory: Path, project_config: Project, compiler_con
     gradle_log_path = project_directory.parent / f"{record_stem}.gradle.log"
     started = time.monotonic()
     with gradle_log_path.open("w") as output:
-        code = subprocess.run(command, cwd=project_directory, stdout=output, stderr=subprocess.STDOUT).returncode
+        code = subprocess.run(command, cwd=project_directory, env={**os.environ, "KONAN_DATA_DIR": str(konan_data_directory)}, stdout=output, stderr=subprocess.STDOUT).returncode
     seconds = time.monotonic() - started
     log_text = gradle_log_path.read_text(errors="replace")
     task_states = re.findall(r"^> Task " + re.escape(project_config.task) + r"(?: ([A-Z-]+))?$", log_text, re.MULTILINE)
@@ -79,9 +86,9 @@ def build_project(project_directory: Path, project_config: Project, compiler_con
         report_path = link.get("built_caches")
     result["link"] = link
     result["error"] = validate_link_result(result)
-    roots = [(native_home / "klib/cache", "native-home/klib/cache")]
+    roots = []
     try:
-        roots = validate_cache_paths(result, cache_paths, report_path)
+        roots = validate_cache_paths(result, auto_cache_directory, cache_paths, report_path)
     except (ValueError, OSError) as error:
         result["error"] = result["error"] or str(error)
     return result, roots

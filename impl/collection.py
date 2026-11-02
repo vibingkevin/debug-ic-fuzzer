@@ -56,7 +56,7 @@ def collect_cache_files(cache_roots: list[tuple[Path, str]], store_directory: Pa
     """Snapshot cache files without interpreting builds or task states.
 
     Args:
-        cache_roots: (Physical directory, recorded path prefix) pairs to scan recursively.
+        cache_roots: Report-selected (cache unit directory, recorded path prefix) pairs to scan recursively.
         store_directory: Shared content store for normalized metadata.properties and bitcode_deps.
 
     Return file records with paths, MD5s, and mtimes. Other files are hashed without

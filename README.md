@@ -1,6 +1,6 @@
 # debug-ic-fuzzer
 
-Replay a commit range with baseline and sut, using the same absolute project path and separate worktrees and Native caches.
+Replay a commit range with baseline and sut, using the same absolute project path and separate worktrees and project/dependency caches; compiler system caches may be shared.
 Build and compare Linux products, and collect Native cache snapshots. No functional tests, cross-commit analysis, or automatic clean.
 
 Requires Linux x64, Python 3.12+, Git, a JDK, and `llvm-strip`. iOS framework comparison is not implemented.
@@ -12,14 +12,15 @@ python3 -m venv .venv
 ```
 
 Compiler and project configurations are separate YAML files in `configs/`.
+Relative CLI configuration paths resolve from `PROJECT_ROOT`, independent of the shell working directory.
 `start_commit` and `end_commit` must lie on the selected branch's main line, with start at or before end.
 Both endpoints are included. `forward` replays oldest to newest; `reverse` replays the same range newest to oldest.
 Order follows commit ancestry, not timestamps; commits within merged side branches are not replayed individually.
 Equal endpoints build one commit. Invalid endpoints or direction stop the run before compilation.
 A Native home directory must be absolute. A `.tgz` or `.tar.gz` path may be relative to the compiler YAML;
 archives are extracted into fresh `/tmp` directories for each run and removed when the run ends.
-Without a home, the tool overrides KGP and lets it download the matching Native distribution into `$KONAN_DATA_DIR` (default: `~/.konan`).
-The tool does not pass `kotlin.native.version`. Both variants resolving to the same Native cache directory is an error.
+Without a home, the tool overrides KGP and lets it download the matching Native distribution into the tool-local `.konan` directory.
+The tool does not pass `kotlin.native.version`. Both variants may use the same Native home and system cache.
 `gradle_args` are passed through, replacing `{config_dir}` with the project YAML directory.
 
 Each run:
@@ -47,8 +48,12 @@ Missing files are differences. Compiler caches are collected, not compared durin
 
 Collection and comparison:
 
-- `cache_files`: scan the single `-Xic-cache-dir` and the compiler's `klib/cache` after builds whose link is not UP-TO-DATE.
-  Record `path`, `md5`, and `mtime_ns`. Paths start with `project/` or `native-home/`, never baseline/sut.
+- `cache_files`: collect only cache units listed in the current `-Xdump-built-caches-to` report.
+  Each reported `<cache-unit>/bin/*.a` selects its containing cache-unit directory, including metadata and IR; duplicate directories are scanned once.
+  For per-file caches this selects only the rebuilt file's unit, not its unchanged siblings; monolithic caches select the whole library unit.
+  The IC, auto-cache, and compiler `klib/cache` roots are allowed boundaries, not full scan targets.
+  An empty report records `[]`; UP-TO-DATE records null. Missing reports after failed builds do not trigger a fallback scan.
+  Record `path`, `md5`, and `mtime_ns`. Paths start with `project/`, `auto-cache/`, or `native-home/`, never baseline/sut.
 - Cache `metadata.properties` and `bitcode_deps` are saved after converting line endings to LF and stripping surrounding whitespace.
   Remove `compilerFingerprint` from metadata before hashing and saving. Cache `.a`, IR, and other files are hashed as bytes but not saved.
 - `artifacts`: inspect the final Linux product directory (`.kexe`, or `.so` plus its generated `.h`).
@@ -60,15 +65,19 @@ Collection and comparison:
   Equal products retain both hashes without saving contents. Temporary production views are always deleted.
 - Saved contents are deduplicated immediately in `store/<filename>/<filename>-<md5>` shared by the run.
   Records do not repeat the derived store path. Cache archive contents are not retained for historical inspection; replay to reproduce them.
-- The compiler's built-cache report checks actual archive paths against the two tracked cache roots.
-  External cache overrides, escaping paths, shared compiler cache roots, and cache/product symlinks are rejected.
+- The compiler's built-cache report checks actual archive paths against the three tracked cache roots.
+  External cache overrides, escaping paths and cache/product symlinks are rejected.
 
 Strip errors are recorded and stop replay. A production difference is a comparison failure, not proof of a compiler bug.
 Sources and outputs remain in their worktrees. `repos/` and `run/` are ignored by Git.
 
 The tool passes `--gradle-user-home <tool-root>/.gradle-home`, overriding the inherited `GRADLE_USER_HOME`.
 All projects, runs, and both compiler variants share this directory and reuse downloaded dependencies.
-The tool root is the working directory from which you launch the runner; `.gradle-home/` is ignored by Git.
+Gradle receives `KONAN_DATA_DIR=<tool-root>/.konan`, overriding the inherited environment without changing the parent process.
+The init script sets `-Xauto-cache-dir` to `<run>/baseline-auto-cache` or `<run>/sut-auto-cache`.
+These dependency caches stay beside the worktrees and are never moved. The project IC path comes from `-Xic-cache-dir`, including module-local build directories.
+The compiler's `klib/cache` remains shared when Native homes match; existing system caches are not cleared.
+The tool root is `PROJECT_ROOT` in `impl/config.py`, resolved from that Python file; `.gradle-home/` and `.konan/` are ignored by Git.
 Build Cache and Configuration Cache follow project settings; only the final Native link is excluded from Build Cache reads and writes.
 The capture action supports Configuration Cache and does not disable UP-TO-DATE checks.
 UP-TO-DATE links retain the command, task state, duration, and log, with null `link`, `cache_files`, and `artifacts`.
@@ -82,7 +91,7 @@ and resolves cache paths for executed links.
 `impl/collection.py` only accepts directories and a store, then snapshots files; it does not read build logs or task states.
 `impl/comparison.py` collects product hashes and compares records.
 Both collectors run inside `project`; each build JSON is written once before the worktree moves back.
-`build_project` groups project directory/config, compiler config/home, and the log stem.
+`build_project` groups project directory/config, compiler config/home/auto-cache, and the log stem.
 The replay loop expands config placeholders and adds commit/variant fields; run paths come from the project directory's parent.
 Platform-specific production normalization stays in `compute_production_md5`; future iOS support can reuse the record format.
 `capture.init.gradle` overrides KGP, excludes the final link from Build Cache, reports the actual compiler path, and requests the built-cache archive list.

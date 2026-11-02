@@ -2,7 +2,6 @@
 
 from contextlib import ExitStack
 from pathlib import Path
-import os
 import platform
 import tarfile
 import tempfile
@@ -10,6 +9,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 import yaml
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 class Config(BaseModel):
@@ -67,8 +68,8 @@ def resolve_native_home(compiler_config: Compiler, compiler_config_directory: Pa
         raise ValueError("Only Apple Silicon Mac and Linux x64 are supported")
     native_home_path = compiler_config.kotlin_native_home
     if native_home_path is None:
-        # Resolve the path for the sharing check; let KGP download without passing native.home.
-        base = Path(os.environ.get("KONAN_DATA_DIR", str(Path.home() / ".konan")))
+        # Match the tool-local KONAN_DATA_DIR passed to Gradle; KGP performs the download.
+        base = PROJECT_ROOT / ".konan"
         return (base / f"kotlin-native-prebuilt-{host}-{compiler_config.kotlin_version}").resolve()
     if native_home_path.name.endswith((".tgz", ".tar.gz")):
         # extract from archive, every time

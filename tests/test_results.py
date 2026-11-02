@@ -143,9 +143,13 @@ def test_cache_boundary_errors(tmp_path, escape):
         Path(report).write_text(str(tmp_path / "outside.a"))
     else:
         (tmp_path / "outside.a").touch()
-        (tmp_path / "project/build/ic/escape.a").symlink_to(tmp_path / "outside.a")
+        cache_bin = tmp_path / "project/build/ic/unit/bin"
+        cache_bin.mkdir(parents=True)
+        (cache_bin / "escape.a").symlink_to(tmp_path / "outside.a")
+        report = str(tmp_path / "project/build/built.txt")
+        Path(report).write_text(str(cache_bin / "escape.a"))
     with pytest.raises(ValueError, match="outside|symlink"):
-        roots = validate_cache_paths(record, cache_paths, report)
+        roots = validate_cache_paths(record, tmp_path / "baseline-auto-cache", cache_paths, report)
         collect_cache_files(roots, tmp_path / "store")
 
 
@@ -190,3 +194,38 @@ def test_up_to_date_comparison(tmp_path, product_records, skipped_variants):
                 stored = tmp_path / "store" / filename / f"{filename}-{artifact['md5']}"
                 original = tmp_path / variant / Path(artifact["path"]).relative_to("project")
                 assert stored.read_bytes() == original.read_bytes()
+
+
+def test_only_reported_cache_units_are_collected(tmp_path):
+    """Select reported units from all three roots in tmp_path, excluding unchanged sibling caches."""
+    project = tmp_path / "project"
+    compiler = tmp_path / "compiler"
+    boundaries = [tmp_path / "baseline-auto-cache", project / "module/build/ic", compiler / "klib/cache"]
+    reported_archives = []
+    for root in boundaries:
+        for unit in ("changed", "unchanged"):
+            cache = root / unit
+            (cache / "bin").mkdir(parents=True)
+            archive = cache / "bin/libcache.a"
+            archive.write_bytes(unit.encode())
+            (cache / "metadata.properties").write_text("hash=abc")
+            if unit == "changed":
+                reported_archives.append(archive)
+    report = project / "module/build/built-caches.txt"
+    report.write_text("\n".join(str(path) for path in [*reported_archives, reported_archives[0]]))
+    record = dict(cwd=str(project), native_home=str(compiler), exit_code=0, link={"ic_cache_dir": str(boundaries[1])})
+    roots = validate_cache_paths(record, boundaries[0], [str(boundaries[0])], str(report))
+    assert {root for root, _ in roots} == {archive.parent.parent for archive in reported_archives}
+    records = collect_cache_files(roots, tmp_path / "store")
+    assert len(records) == 6
+    assert all("/changed/" in entry["path"] for entry in records)
+    assert any(entry["path"].startswith("native-home/") for entry in records)
+    assert any(entry["path"].startswith("auto-cache/") for entry in records)
+    assert any(entry["path"].startswith("project/module/build/ic/") for entry in records)
+    report.write_text("")
+    assert validate_cache_paths(record, boundaries[0], [], str(report)) == []
+    report.unlink()
+    with pytest.raises(ValueError, match="did not write"):
+        validate_cache_paths(record, boundaries[0], [], str(report))
+    record["exit_code"] = 1
+    assert validate_cache_paths(record, boundaries[0], [], str(report)) == []

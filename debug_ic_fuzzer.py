@@ -10,6 +10,7 @@ import tarfile
 
 import yaml
 
+from impl import config
 from impl.build import build_project
 from impl.collection import collect_cache_files
 from impl.comparison import collect_product_hashes, compare_products, save_product_contents
@@ -21,23 +22,23 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path) -> in
     """Replay both compilers, collect results, and stop after a failed commit pair.
 
     Args:
-        compilers_config_path: Configuration file defining baseline and sut distributions.
-        project_config_path: Configuration file defining the repository, commit range, and Gradle task.
+        compilers_config_path: Compiler configuration path, absolute or relative to PROJECT_ROOT.
+        project_config_path: Project configuration path, absolute or relative to PROJECT_ROOT.
 
     Returns:
         0 if all pairs pass or both links are UP-TO-DATE, otherwise 1. Writes results and
-        worktrees under the current directory; configuration/setup errors propagate.
+        worktrees under PROJECT_ROOT; configuration/setup errors propagate.
     """
+    compilers_config_path = (config.PROJECT_ROOT / compilers_config_path).resolve()
+    project_config_path = (config.PROJECT_ROOT / project_config_path).resolve()
     compilers = load_config(compilers_config_path, Compilers).compilers
     project_config = load_config(project_config_path, Project)
     project_config.gradle_args = [arg.replace("{config_dir}", str(project_config_path.parent)) for arg in project_config.gradle_args]
-    tool_directory = Path.cwd()
+    tool_directory = config.PROJECT_ROOT
     run_directory = tool_directory / "run" / f"{compilers_config_path.stem}-{project_config_path.stem}-{datetime.now():%Y%m%d-%H%M%S}"
     run_directory.mkdir(parents=True)
     with ExitStack() as compiler_cleanup:
         native_homes = {variant: resolve_native_home(compiler_config, compilers_config_path.parent, compiler_cleanup) for variant, compiler_config in compilers.items()}
-        if (native_homes["baseline"] / "klib/cache").resolve() == (native_homes["sut"] / "klib/cache").resolve():
-            raise ValueError("baseline and sut cannot use the same Native cache")
         bare_repository, commit_ids = prepare_repository(tool_directory / "repos", project_config)
         for variant in ("baseline", "sut"):
             create_detached_worktree(bare_repository, run_directory / variant, commit_ids[0])
@@ -47,7 +48,7 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path) -> in
             for variant in ("baseline", "sut"):
                 record_stem = f"{commit_index:04d}-{commit_id[:12]}-{variant}"
                 with activate_worktree(bare_repository, run_directory / variant, commit_id) as project_directory:
-                    build_result, cache_roots = build_project(project_directory, project_config, compilers[variant], native_homes[variant], record_stem)
+                    build_result, cache_roots = build_project(project_directory, project_config, compilers[variant], native_homes[variant], run_directory / f"{variant}-auto-cache", record_stem)
                     build_result.update(commit=commit_id, variant=variant, cache_files=None, artifacts=None)
                     try:
                         if build_result["task_state"] != "UP-TO-DATE":
@@ -84,7 +85,7 @@ def main():
     parser.add_argument("--project", required=True, type=Path)
     args = parser.parse_args()
     try:
-        return replay_commits(args.compilers.resolve(), args.project.resolve())
+        return replay_commits(args.compilers, args.project)
     except (ValueError, OSError, subprocess.CalledProcessError, tarfile.TarError, yaml.YAMLError) as error:
         parser.exit(2, f"{error}\n")
 
