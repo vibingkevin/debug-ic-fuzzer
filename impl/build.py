@@ -41,12 +41,11 @@ def build(
             project.task,
             *[arg.replace("{config_dir}", str(config_dir)) for arg in project.gradle_args],
             "--console=plain",
-            "--info",
             "-I",
             str(init_script()),
             f"-Pic.kotlin.version={compiler.kotlin_version}",
             "-Pkotlin.incremental.native=true",
-            "-Pkotlin.internal.compiler.arguments.log.level=info",
+            "-Pkotlin.internal.compiler.arguments.log.level=warning",
         ]
         if compiler.kotlin_native_home is not None:
             command.append(f"-Pkotlin.native.home={home}")

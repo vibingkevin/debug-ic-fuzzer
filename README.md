@@ -33,7 +33,8 @@ Each run:
 
 Each commit writes two JSON records and two Gradle logs directly in the run directory, named
 `0000-<commit12>-baseline.json`, `0000-<commit12>-baseline.gradle.log`, and the corresponding sut files.
-The zero-based index follows replay order. Logs include konanc arguments, without normalization or deduplication.
+The zero-based index follows replay order. Gradle uses its default log level; KGP reports compiler arguments at warning level.
+Logs include konanc arguments, without normalization or deduplication.
 A failed build or result check still saves the record and allows the other variant of that commit to run, then stops replay.
 Records contain the command, compiler path, duration, exit code, and final link details; artifacts and IC files are not scanned or archived.
 Sources and outputs remain in their worktrees. `repos/` and `run/` are ignored by Git.

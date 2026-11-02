@@ -116,6 +116,8 @@ sys.exit(7 if home.endswith('fail') else 0)
         assert not (destination / 'store').exists()
         assert not (destination / 'project').exists()
         assert '-Pic.kotlin.version=2.4.21' in result['command']
+        assert '--info' not in result['command']
+        assert '-Pkotlin.internal.compiler.arguments.log.level=warning' in result['command']
         assert not any(a.startswith('-Pkotlin.native.version=') for a in result['command'])
         assert not any(a.startswith('--no-') for a in result['command'])
     assert subprocess.check_output(['git', '-C', str(destination / 'baseline'), 'rev-parse', 'HEAD'], text=True).strip() == first
