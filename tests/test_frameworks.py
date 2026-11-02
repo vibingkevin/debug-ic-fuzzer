@@ -94,6 +94,8 @@ def test_framework_comparison(tmp_path, static, change):
             result = dict(cwd=str(active), task_state="EXECUTED", link={"output": str(active / "build/Sample.framework")})
             collect_product_hashes(result)
             results[variant] = result
+        except subprocess.CalledProcessError as error:
+            pytest.fail(error.stderr)
         finally:
             active.rename(parked)
     comparison = compare_products(results)
