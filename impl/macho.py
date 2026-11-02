@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 
 from macholib.MachO import MachO
+from macholib.ptypes import sizeof
 from macholib.mach_o import FAT_CIGAM, FAT_MAGIC, LC_CODE_SIGNATURE, LC_UUID, MH_CIGAM, MH_CIGAM_64, MH_MAGIC, MH_MAGIC_64
 
 
@@ -31,11 +32,13 @@ def compute_production_md5(product_path: Path, scratch_directory: Path) -> str:
         if any(command.cmd == LC_CODE_SIGNATURE for header in macho.headers for command, _, _ in header.commands):
             subprocess.run(["codesign", "--remove-signature", str(stripped_path)], check=True, capture_output=True, text=True)
             macho = MachO(str(stripped_path))
-        for header in macho.headers:
-            for command, data, _ in header.commands:
-                if command.cmd == LC_UUID:
-                    data.uuid = bytes(16)
         with stripped_path.open("r+b") as output:
-            macho.write(output)
+            for header in macho.headers:
+                command_offset = header.offset + sizeof(header.header)
+                for command, _, _ in header.commands:
+                    if command.cmd == LC_UUID:
+                        output.seek(command_offset + sizeof(command))
+                        output.write(bytes(16))
+                    command_offset += command.cmdsize
     with stripped_path.open("rb") as output:
         return hashlib.file_digest(output, "md5").hexdigest()

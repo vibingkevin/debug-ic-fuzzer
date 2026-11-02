@@ -6,6 +6,7 @@ import shutil
 import subprocess
 
 from macholib.MachO import MachO
+from macholib.ptypes import sizeof
 from macholib.mach_o import LC_UUID
 import pytest
 
@@ -75,12 +76,14 @@ def test_framework_comparison(tmp_path, static, change):
         else:
             subprocess.run(["codesign", "--remove-signature", str(binary)], check=True, capture_output=True)
             macho = MachO(str(binary))
-            for header in macho.headers:
-                for command, data, _ in header.commands:
-                    if command.cmd == LC_UUID:
-                        data.uuid = b"x" * 16
             with binary.open("r+b") as output:
-                macho.write(output)
+                for header in macho.headers:
+                    command_offset = header.offset + sizeof(header.header)
+                    for command, _, _ in header.commands:
+                        if command.cmd == LC_UUID:
+                            output.seek(command_offset + sizeof(command))
+                            output.write(b"x" * 16)
+                        command_offset += command.cmdsize
     original_contents = (sut / "Sample").read_bytes()
     results = {}
     for variant in ("baseline", "sut"):
