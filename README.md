@@ -87,6 +87,8 @@ Sources and outputs remain in their worktrees. `repos/` and `run/` are ignored b
 The tool passes `--gradle-user-home <tool-root>/.gradle-home`, overriding the inherited `GRADLE_USER_HOME`.
 All projects, runs, and both compiler variants share this directory and reuse downloaded dependencies.
 Gradle receives `KONAN_DATA_DIR=<tool-root>/.konan`, overriding the inherited environment without changing the parent process.
+The final link uses `-Xtemporary-files-dir` under its task's temporary directory inside `project`, cleared before and after successful execution.
+Gradle also receives `ZERO_AR_DATE=1` to remove object timestamps from Mach-O debug maps and archive headers.
 The init script sets `-Xauto-cache-dir` to `<run>/baseline-auto-cache` or `<run>/sut-auto-cache`.
 These dependency caches stay beside the worktrees and are never moved. The project IC path comes from `-Xic-cache-dir`, including module-local build directories.
 The compiler's `klib/cache` remains shared when Native homes match; existing system caches are not cleared.

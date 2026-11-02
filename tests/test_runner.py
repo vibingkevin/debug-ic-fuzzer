@@ -103,6 +103,7 @@ def test_shared_repository_independent_worktrees_and_failed_build(tmp_path, monk
         + """import json, os, pathlib, sys
 args = sys.argv[1:]
 assert pathlib.Path(os.environ['KONAN_DATA_DIR']) == pathlib.Path(args[args.index('--gradle-user-home') + 1]).parent / '.konan'
+assert os.environ['ZERO_AR_DATE'] == '1'
 home = next((a.split('=', 1)[1] for a in args if a.startswith('-Pkotlin.native.home=')), '/downloaded')
 out = pathlib.Path.cwd() / 'build/app.kexe'
 out.parent.mkdir(exist_ok=True)

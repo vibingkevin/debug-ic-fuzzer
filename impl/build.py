@@ -58,7 +58,7 @@ def build_project(project_directory: Path, project_config: Project, compiler_con
     gradle_log_path = project_directory.parent / f"{record_stem}.gradle.log"
     started = time.monotonic()
     with gradle_log_path.open("w") as output:
-        code = subprocess.run(command, cwd=project_directory, env={**os.environ, "KONAN_DATA_DIR": str(konan_data_directory)}, stdout=output, stderr=subprocess.STDOUT).returncode
+        code = subprocess.run(command, cwd=project_directory, env={**os.environ, "KONAN_DATA_DIR": str(konan_data_directory), "ZERO_AR_DATE": "1"}, stdout=output, stderr=subprocess.STDOUT).returncode
     seconds = time.monotonic() - started
     log_text = gradle_log_path.read_text(errors="replace")
     task_states = re.findall(r"^> Task " + re.escape(project_config.task) + r"(?: ([A-Z-]+))?$", log_text, re.MULTILINE)
