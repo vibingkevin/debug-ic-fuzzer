@@ -54,7 +54,9 @@ def test_same_default_home_fails_before_clone(tmp_path, monkeypatch):
     assert not (tmp_path / 'repos').exists()
 
 
-def test_shared_repository_independent_worktrees_and_failed_build(tmp_path):
+def test_shared_repository_independent_worktrees_and_failed_build(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GRADLE_USER_HOME", str(tmp_path / "external-home"))
     source = tmp_path / 'source'
     subprocess.run(['git', 'init', '-b', 'main', str(source)], check=True, capture_output=True)
     def local(*args):
@@ -117,6 +119,7 @@ sys.exit(7 if home.endswith('fail') else 0)
         assert not (destination / 'project').exists()
         assert '-Pic.kotlin.version=2.4.21' in result['command']
         assert '--info' not in result['command']
+        assert result['command'][result['command'].index('--gradle-user-home') + 1] == str(tmp_path / '.gradle-home')
         assert '-Pkotlin.internal.compiler.arguments.log.level=warning' in result['command']
         assert not any(a.startswith('-Pkotlin.native.version=') for a in result['command'])
         assert not any(a.startswith('--no-') for a in result['command'])

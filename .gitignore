@@ -10,3 +10,4 @@ configs/*.tgz
 configs/*.tar.gz
 repos/
 run/
+.gradle-home/

@@ -39,7 +39,9 @@ A failed build or result check still saves the record and allows the other varia
 Records contain the command, compiler path, duration, exit code, and final link details; artifacts and IC files are not scanned or archived.
 Sources and outputs remain in their worktrees. `repos/` and `run/` are ignored by Git.
 
-The tool inherits `GRADLE_USER_HOME`, defaulting to the global `~/.gradle`, and keeps downloaded dependencies.
+The tool passes `--gradle-user-home <tool-root>/.gradle-home`, overriding the inherited `GRADLE_USER_HOME`.
+All projects, runs, and both compiler variants share this directory and reuse downloaded dependencies.
+The tool root is the working directory from which you launch the runner; `.gradle-home/` is ignored by Git.
 Build Cache and Configuration Cache follow project settings; only the final Native link is excluded from Build Cache reads and writes.
 The capture action supports Configuration Cache and does not disable UP-TO-DATE checks.
 The initial product build in each fresh worktree must execute the link task.
@@ -48,6 +50,7 @@ Records include the link task state. There is no comparison with previous result
 
 `debug_ic_fuzzer.py` coordinates both variants. `impl/config.py` handles configuration and distributions;
 `impl/repository.py` prepares repositories; `impl/build.py` runs and records a single build.
+`impl/validation.py` checks the completed build's link state, compiler path, and output.
 `capture.init.gradle` overrides KGP, excludes the final link from Build Cache, and reports the actual compiler path.
 
 ### Inlining options

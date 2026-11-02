@@ -9,6 +9,7 @@ import time
 
 from impl.config import Compiler, Project
 from impl.repository import checkout_worktree
+from impl.validation import validate_result
 
 
 def init_script() -> Path:
@@ -40,6 +41,8 @@ def build(
             str(build_directory / "gradlew"),
             project.task,
             *[arg.replace("{config_dir}", str(config_dir)) for arg in project.gradle_args],
+            "--gradle-user-home",
+            str(Path.cwd() / ".gradle-home"),
             "--console=plain",
             "-I",
             str(init_script()),
@@ -67,19 +70,7 @@ def build(
     link = calls[0] if len(calls) == 1 else None
     if not calls and task_state == "UP-TO-DATE":
         link = last_link
-    error = None
-    if code == 0:
-        if task_state == "FROM-CACHE":
-            error = "The final Native link must not be restored from Build Cache"
-        elif len(calls) > 1 or link is None:
-            error = "Expected one Native link or UP-TO-DATE with a previously executed link"
-        elif Path(link["home"]).resolve() != home:
-            error = "Actual Native home does not match the configuration"
-        elif not Path(link["output"]).is_relative_to(build_directory):
-            error = "Final output is outside the project"
-        elif not (variant_directory / Path(link["output"]).relative_to(build_directory)).exists():
-            error = "Final output does not exist"
-    return dict(
+    result = dict(
         commit=revision,
         variant=name,
         command=command,
@@ -87,9 +78,10 @@ def build(
         kotlin_version=compiler.kotlin_version,
         native_home=str(home),
         exit_code=code,
-        error=error,
         seconds=seconds,
         task_state=task_state,
         link=link,
         log=log.name,
     )
+    result["error"] = validate_result(result, variant_directory)
+    return result
