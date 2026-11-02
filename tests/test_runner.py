@@ -80,20 +80,38 @@ sys.exit(7 if home.endswith('fail') else 0)
     # Bypass URL validation for the local Git fixture; the CLI still requires a remote URL.
     project = Project.model_construct(repository=str(source), branch='main', start_commit=first,
                                       end_commit=second, direction='forward', task=':app:link', gradle_args=[])
-    repository, revision = prepare_repository(tmp_path / 'repos', project)
-    assert revision == first
+    repository, revisions = prepare_repository(tmp_path / 'repos', project)
+    assert revisions == [first, second]
     project.direction = 'reverse'
-    assert prepare_repository(tmp_path / 'repos', project) == (repository, second)
+    assert prepare_repository(tmp_path / 'repos', project) == (repository, [second, first])
+    project.end_commit = first
+    assert prepare_repository(tmp_path / 'repos', project)[1] == [first]
+    project.start_commit = second
+    with pytest.raises(ValueError, match='start no later than end'):
+        prepare_repository(tmp_path / 'repos', project)
+    project.start_commit = 'missing-commit'
+    with pytest.raises(ValueError):
+        prepare_repository(tmp_path / 'repos', project)
+    local('checkout', '-b', 'side', first)
+    (source / 'side').write_text('side')
+    local('add', '.')
+    local('-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '-m', 'side')
+    project.start_commit = local('rev-parse', 'HEAD')
+    local('checkout', 'main')
+    subprocess.run(['git', '--git-dir', str(repository), 'fetch', 'origin', 'side'], check=True, capture_output=True)
+    with pytest.raises(ValueError, match='selected branch'):
+        prepare_repository(tmp_path / 'repos', project)
+    project.start_commit, project.end_commit = first, second
     destination = tmp_path / 'run'
     destination.mkdir()
     for name, sha in [('baseline', first), ('sut', second)]:
         create_worktree(repository, destination / name, sha)
     for name, home in [('baseline', Path('/compiler/fail')), ('sut', Path('/downloaded'))]:
         compiler = Compiler(kotlin_version='2.4.21', kotlin_native_home=home if name == 'baseline' else None)
-        result = build(repository, destination, name, revision, project, compiler, home, tmp_path)
+        result = build(repository, destination, name, first, project, compiler, home, tmp_path, f'0000-{first[:12]}-{name}')
         assert result['exit_code'] == (7 if name == 'baseline' else 0)
         assert result['error'] is None
-        assert result['log'] == f'{name}.gradle.log'
+        assert result['log'] == f'0000-{first[:12]}-{name}.gradle.log'
         assert (destination / result['log']).is_file()
         assert not (destination / 'store').exists()
         assert not (destination / 'project').exists()
@@ -114,3 +132,72 @@ sys.exit(7 if home.endswith('fail') else 0)
             pytest.fail('Invalid commit must not enter the build phase')
     assert (destination / 'sut').is_dir()
     assert not (destination / 'project').exists()
+
+
+@pytest.mark.parametrize("failure", [None, "baseline", "sut"])
+def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
+    import debug_ic_fuzzer as runner
+    from impl.config import Compilers
+
+    monkeypatch.chdir(tmp_path)
+    compilers = Compilers(compilers={name: Compiler(kotlin_version='2.4.21') for name in ('baseline', 'sut')})
+    project = Project(repository='https://example.test/project.git', branch='main',
+                      start_commit='a', end_commit='c', task=':app:link')
+    monkeypatch.setattr(runner, 'load', lambda path, model: compilers if model is Compilers else project)
+    monkeypatch.setattr(runner, 'prepare_home', lambda compiler, *_: Path('/baseline') if compiler is compilers.compilers['baseline'] else Path('/sut'))
+    monkeypatch.setattr(runner, 'prepare_repository', lambda *_: (tmp_path / 'repo', ['a', 'b', 'c']))
+    created, calls = [], []
+    monkeypatch.setattr(runner, 'create_worktree', lambda repo, path, sha: created.append((path.name, sha)))
+
+    def fake_build(repo, destination, name, revision, project, compiler, home, config_dir, record_name, last_link):
+        calls.append((revision, name))
+        assert last_link == (None if revision == 'a' else {'task': ':app:link'})
+        (destination / f'{record_name}.gradle.log').write_text('completed')
+        return dict(commit=revision, variant=name, exit_code=int(revision == 'b' and name == failure),
+                    error=None, link={'task': ':app:link'})
+
+    monkeypatch.setattr(runner, 'build', fake_build)
+    assert run(tmp_path / 'compilers.yaml', tmp_path / 'project.yaml') == int(failure is not None)
+    assert created == [('baseline', 'a'), ('sut', 'a')]
+    revisions = ['a', 'b'] if failure else ['a', 'b', 'c']
+    assert calls == [(sha, name) for sha in revisions for name in ('baseline', 'sut')]
+    destination, = (tmp_path / 'run').iterdir()
+    assert len(list(destination.glob('*.json'))) == len(calls)
+    for index, sha in enumerate(revisions):
+        for name in ('baseline', 'sut'):
+            record_name = f'{index:04d}-{sha}-{name}'
+            assert json.loads((destination / f'{record_name}.json').read_text())['commit'] == sha
+            assert (destination / f'{record_name}.gradle.log').is_file()
+
+
+@pytest.mark.parametrize('state,previous,output,valid', [
+    ('UP-TO-DATE', True, True, True),
+    ('UP-TO-DATE', False, True, False),
+    ('UP-TO-DATE', True, False, False),
+    ('FROM-CACHE', True, True, False),
+])
+def test_skipped_link(tmp_path, monkeypatch, state, previous, output, valid):
+    from contextlib import contextmanager
+    import importlib
+    builder = importlib.import_module('impl.build')
+
+    @contextmanager
+    def checkout(*_):
+        yield tmp_path / 'project'
+
+    def gradle(command, cwd, stdout, **kwargs):
+        stdout.write(f'> Task :app:link {state}\n')
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(builder, 'checkout_worktree', checkout)
+    monkeypatch.setattr(builder.subprocess, 'run', gradle)
+    (tmp_path / 'baseline').mkdir()
+    if output:
+        (tmp_path / 'baseline/app.kexe').touch()
+    link = dict(home='/compiler', output=str(tmp_path / 'project/app.kexe'))
+    project = Project(repository='https://example.test/project.git', branch='main',
+                      start_commit='a', end_commit='b', task=':app:link')
+    result = build(tmp_path, tmp_path, 'baseline', 'b', project, Compiler(kotlin_version='2.4.21'),
+                   Path('/compiler'), tmp_path, '0001-b-baseline', link if previous else None)
+    assert (result['error'] is None) == valid
+    assert result['task_state'] == state

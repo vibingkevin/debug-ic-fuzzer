@@ -1,7 +1,7 @@
 [project]
 name = "debug-ic-fuzzer"
 version = "0.1.0"
-description = "Kotlin/Native Debug IC single-commit baseline and sut builds"
+description = "Kotlin/Native Debug IC commit replay with baseline and sut"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{name = "Kevin", email = "kevin.dev@foxmail.com"}]

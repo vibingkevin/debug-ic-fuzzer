@@ -1,4 +1,4 @@
-"""Build the first selected commit with baseline and sut."""
+"""Build each selected commit with baseline and sut."""
 from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
@@ -24,15 +24,22 @@ def run(compilers_path: Path, project_path: Path) -> int:
         homes = {name: prepare_home(c, compilers_path.parent, temporary) for name, c in compilers.items()}
         if homes['baseline'] == homes['sut']:
             raise ValueError('baseline and sut cannot use the same Native home')
-        repository, revision = prepare_repository(root / 'repos', project)
+        repository, revisions = prepare_repository(root / 'repos', project)
         for name in ('baseline', 'sut'):
-            create_worktree(repository, destination / name, revision)
+            create_worktree(repository, destination / name, revisions[0])
         failed = False
-        for name in ('baseline', 'sut'):
-            result = build(repository, destination, name, revision, project, compilers[name], homes[name], project_path.parent)
-            (destination / f'{name}.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
-            failed |= result['exit_code'] != 0 or result['error'] is not None
-            print(f"{name}: exit={result['exit_code']} error={result['error']}", flush=True)
+        last_links = {'baseline': None, 'sut': None}
+        for index, revision in enumerate(revisions):
+            for name in ('baseline', 'sut'):
+                record_name = f'{index:04d}-{revision[:12]}-{name}'
+                result = build(repository, destination, name, revision, project, compilers[name],
+                               homes[name], project_path.parent, record_name, last_links[name])
+                (destination / f'{record_name}.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
+                failed |= result['exit_code'] != 0 or result['error'] is not None
+                last_links[name] = result['link']
+                print(f"{index:04d} {revision[:12]} {name}: exit={result['exit_code']} error={result['error']}", flush=True)
+            if failed:
+                break
         print(destination, flush=True)
         return int(failed)
 

@@ -1,8 +1,8 @@
-# Build only the first selected commit; for iOS use :app:linkDebugFrameworkIosSimulatorArm64.
+# Replay the inclusive commit range; for iOS use :app:linkDebugFrameworkIosSimulatorArm64.
 repository: "https://github.com/vibingkevin/native-ic-sample.git" # Git URLs only; local paths are not supported.
 branch: "main"                        # The branch must contain both endpoints.
 start_commit: "db60251d556ced9a5849a022689df443538afea6"
 end_commit: "6864a8382d35830318f0e491e474b712d778cd7f"
-direction: forward                    # forward selects start_commit; reverse selects end_commit.
+direction: forward                    # forward: oldest to newest; reverse: newest to oldest.
 task: ":app:linkDebugExecutableLinuxX64"      # The final product link task.
 # gradle_args: ["-Pfeature=true"]      # Optional; {config_dir} expands to this YAML directory.

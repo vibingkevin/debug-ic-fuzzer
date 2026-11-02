@@ -38,7 +38,7 @@ def checkout_worktree(repository: Path, variant_directory: Path, commit: str):
         _run_git(repository, "worktree", "move", str(build_directory), str(variant_directory))
 
 
-def prepare_repository(root: Path, project: Project) -> tuple[Path, str]:
+def prepare_repository(root: Path, project: Project) -> tuple[Path, list[str]]:
     root.mkdir(parents=True, exist_ok=True)
     name = project.repository.rsplit("/", 1)[-1].removesuffix(".git")
     key = hashlib.md5(project.repository.encode()).hexdigest()[:8]
@@ -63,4 +63,5 @@ def prepare_repository(root: Path, project: Project) -> tuple[Path, str]:
         raise ValueError(
             "Start and end commits must be on the selected branch, with start no later than end"
         )
-    return repository, start if project.direction == "forward" else end
+    commits = history[history.index(start):history.index(end) + 1]
+    return repository, commits if project.direction == "forward" else commits[::-1]

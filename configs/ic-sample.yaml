@@ -1,4 +1,4 @@
-# Linux x64 local implementation changes; currently only the first selected commit is built.
+# Replay three Linux x64 local implementation changes.
 # Build the Debug product executable without compiling or running tests.
 repository: https://github.com/vibingkevin/native-ic-sample.git
 branch: main

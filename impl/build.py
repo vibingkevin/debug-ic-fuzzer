@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import json
+import re
 import subprocess
 import sys
 import time
@@ -28,9 +29,11 @@ def build(
     compiler: Compiler,
     home: Path,
     config_dir: Path,
+    record_name: str,
+    last_link: dict | None = None,
 ) -> dict:
     variant_directory = destination / name
-    log = destination / f"{name}.gradle.log"
+    log = destination / f"{record_name}.gradle.log"
     started = time.monotonic()
     with checkout_worktree(repository, variant_directory, revision) as build_directory:
         command = [
@@ -53,20 +56,29 @@ def build(
                 command, cwd=build_directory, stdout=output, stderr=subprocess.STDOUT
             ).returncode
     seconds = time.monotonic() - started
+    log_text = log.read_text(errors="replace")
+    task_states = re.findall(r"^> Task " + re.escape(project.task) + r"(?: ([A-Z-]+))?$", log_text, re.MULTILINE)
+    task_state = (task_states[-1] or "EXECUTED") if task_states else None
     calls = [
         json.loads(line.removeprefix("IC_FUZZER "))
-        for line in log.read_text(errors="replace").splitlines()
+        for line in log_text.splitlines()
         if line.startswith("IC_FUZZER ")
     ]
+    # Only carry task metadata for UP-TO-DATE; never compare with previous results.
+    link = calls[0] if len(calls) == 1 else None
+    if not calls and task_state == "UP-TO-DATE":
+        link = last_link
     error = None
     if code == 0:
-        if len(calls) != 1:
-            error = "Expected one executed Native link; check whether the target supports this host"
-        elif Path(calls[0]["home"]).resolve() != home:
+        if task_state == "FROM-CACHE":
+            error = "The final Native link must not be restored from Build Cache"
+        elif len(calls) > 1 or link is None:
+            error = "Expected one Native link or UP-TO-DATE with a previously executed link"
+        elif Path(link["home"]).resolve() != home:
             error = "Actual Native home does not match the configuration"
-        elif not Path(calls[0]["output"]).is_relative_to(build_directory):
+        elif not Path(link["output"]).is_relative_to(build_directory):
             error = "Final output is outside the project"
-        elif not (variant_directory / Path(calls[0]["output"]).relative_to(build_directory)).exists():
+        elif not (variant_directory / Path(link["output"]).relative_to(build_directory)).exists():
             error = "Final output does not exist"
     return dict(
         commit=revision,
@@ -78,6 +90,7 @@ def build(
         exit_code=code,
         error=error,
         seconds=seconds,
-        link=calls[-1] if calls else None,
+        task_state=task_state,
+        link=link,
         log=log.name,
     )
