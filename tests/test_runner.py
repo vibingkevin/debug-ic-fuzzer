@@ -11,14 +11,15 @@ import pytest
 from debug_ic_fuzzer import run
 from impl.build import build
 from impl.config import Compiler, Project, prepare_home
-from impl.repository import git, prepare_repository
+from impl.repository import checkout_worktree, create_worktree, prepare_repository
 
 
-def test_home_paths_and_fresh_archives(tmp_path, monkeypatch):
+@pytest.mark.parametrize("extension", ["tgz", "tar.gz"])
+def test_home_paths_and_fresh_archives(tmp_path, monkeypatch, extension):
     monkeypatch.setattr('impl.config.platform.system', lambda: 'Linux')
     monkeypatch.setattr('impl.config.platform.machine', lambda: 'x86_64')
     monkeypatch.setenv('KONAN_DATA_DIR', str(tmp_path / 'konan'))
-    archive = tmp_path / 'compiler.tgz'
+    archive = tmp_path / f'compiler.{extension}'
     with tarfile.open(archive, 'w:gz') as tar:
         entry = tarfile.TarInfo('dist/bin/konanc')
         entry.size = 1
@@ -27,7 +28,7 @@ def test_home_paths_and_fresh_archives(tmp_path, monkeypatch):
         assert prepare_home(Compiler(kotlin_version='2.4.21'), tmp_path, stack) == tmp_path / 'konan/kotlin-native-prebuilt-linux-x86_64-2.4.21'
         with pytest.raises(ValueError, match='absolute path'):
             prepare_home(Compiler(kotlin_version='2.4.21', kotlin_native_home='relative'), tmp_path, stack)
-        c = Compiler(kotlin_version='2.4.21', kotlin_native_home='compiler.tgz')
+        c = Compiler(kotlin_version='2.4.21', kotlin_native_home=f'compiler.{extension}')
         first, second = [prepare_home(c, tmp_path, stack) for _ in range(2)]
         assert first != second and (first / 'bin/konanc').is_file()
     assert not first.exists() and not second.exists()
@@ -86,7 +87,7 @@ sys.exit(7 if home.endswith('fail') else 0)
     destination = tmp_path / 'run'
     destination.mkdir()
     for name, sha in [('baseline', first), ('sut', second)]:
-        git(repository, 'worktree', 'add', '--detach', str(destination / name), sha)
+        create_worktree(repository, destination / name, sha)
     for name, home in [('baseline', Path('/compiler/fail')), ('sut', Path('/downloaded'))]:
         compiler = Compiler(kotlin_version='2.4.21', kotlin_native_home=home if name == 'baseline' else None)
         result = build(repository, destination, name, revision, project, compiler, home, tmp_path)
@@ -98,4 +99,16 @@ sys.exit(7 if home.endswith('fail') else 0)
         assert not any(a.startswith('-Pkotlin.native.version=') for a in result['command'])
         assert not any(a.startswith('--no-') for a in result['command'])
     assert subprocess.check_output(['git', '-C', str(destination / 'baseline'), 'rev-parse', 'HEAD'], text=True).strip() == first
-    assert subprocess.check_output(['git', '-C', str(destination / 'sut'), 'rev-parse', 'HEAD'], text=True).strip() == second
+    assert subprocess.check_output(['git', '-C', str(destination / 'sut'), 'rev-parse', 'HEAD'], text=True).strip() == first
+
+    # Reuse a worktree for the next commit without losing its build outputs.
+    with checkout_worktree(repository, destination / 'sut', second) as worktree:
+        assert (worktree / 'second').read_text() == 'second'
+        assert (worktree / 'build/app.kexe').exists()
+        assert subprocess.check_output(['git', '-C', str(worktree), 'rev-parse', 'HEAD'], text=True).strip() == second
+    assert not (destination / 'project').exists()
+    with pytest.raises(subprocess.CalledProcessError):
+        with checkout_worktree(repository, destination / 'sut', 'missing-commit'):
+            pytest.fail('Invalid commit must not enter the build phase')
+    assert (destination / 'sut').is_dir()
+    assert not (destination / 'project').exists()

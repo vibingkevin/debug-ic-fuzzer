@@ -52,29 +52,30 @@ def prepare_home(compiler: Compiler, config_dir: Path, temporary: ExitStack) -> 
     }.get((platform.system(), platform.machine()))
     if host is None:
         raise ValueError("Only Apple Silicon Mac and Linux x64 are supported")
-    source = compiler.kotlin_native_home
-    if source is None:
+    native_home_path = compiler.kotlin_native_home
+    if native_home_path is None:
         # Resolve the path for the sharing check; let KGP download without passing native.home.
         base = Path(os.environ.get("KONAN_DATA_DIR", str(Path.home() / ".konan")))
         return (
             base / f"kotlin-native-prebuilt-{host}-{compiler.kotlin_version}"
         ).resolve()
-    if source.name.endswith((".tgz", ".tar.gz")):
-        folder = Path(
+    if native_home_path.name.endswith((".tgz", ".tar.gz")):
+        extraction_dir = Path(
             temporary.enter_context(
                 tempfile.TemporaryDirectory(prefix="ic-fuzzer-", dir="/tmp")
             )
         )
-        with tarfile.open(config_dir / source) as archive:
-            archive.extractall(folder, filter="data")
-        candidates = list(folder.glob("*/bin/konanc")) + list(folder.glob("bin/konanc"))
+        archive_path = config_dir / native_home_path
+        with tarfile.open(archive_path) as archive:
+            archive.extractall(extraction_dir, filter="data")
+        candidates = list(extraction_dir.glob("*/bin/konanc")) + list(extraction_dir.glob("bin/konanc"))
         if len(candidates) != 1:
             raise ValueError(
-                f"The archive must contain exactly one bin/konanc: {source}"
+                f"The archive must contain exactly one bin/konanc: {native_home_path}"
             )
         return candidates[0].parent.parent.resolve()
-    if not source.is_absolute():
-        raise ValueError(f"Compiler directory must be an absolute path: {source}")
-    if not (source / "bin/konanc").is_file():
-        raise ValueError(f"Cannot find bin/konanc: {source}")
-    return source.resolve()
+    if not native_home_path.is_absolute():
+        raise ValueError(f"Compiler directory must be an absolute path: {native_home_path}")
+    if not (native_home_path / "bin/konanc").is_file():
+        raise ValueError(f"Cannot find bin/konanc: {native_home_path}")
+    return native_home_path.resolve()

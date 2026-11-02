@@ -1,5 +1,6 @@
 """Reuse a bare repository and create two independent worktrees per run."""
 
+from contextlib import contextmanager
 from pathlib import Path
 import hashlib
 import subprocess
@@ -7,7 +8,7 @@ import subprocess
 from impl.config import Project
 
 
-def git(repository: Path, *args: str) -> str:
+def _run_git(repository: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", "--git-dir", str(repository), *args],
         text=True,
@@ -17,6 +18,24 @@ def git(repository: Path, *args: str) -> str:
     if result.returncode:
         raise ValueError(result.stderr.strip())
     return result.stdout.strip()
+
+
+def create_worktree(repository: Path, directory: Path, commit: str):
+    _run_git(repository, "worktree", "add", "--detach", str(directory), commit)
+
+
+@contextmanager
+def checkout_worktree(repository: Path, variant_directory: Path, commit: str):
+    build_directory = variant_directory.parent / "project"
+    _run_git(repository, "worktree", "move", str(variant_directory), str(build_directory))
+    try:
+        subprocess.run(
+            ["git", "-C", str(build_directory), "checkout", "--detach", commit],
+            check=True, capture_output=True, text=True,
+        )
+        yield build_directory
+    finally:
+        _run_git(repository, "worktree", "move", str(build_directory), str(variant_directory))
 
 
 def prepare_repository(root: Path, project: Project) -> tuple[Path, str]:
@@ -30,12 +49,12 @@ def prepare_repository(root: Path, project: Project) -> tuple[Path, str]:
         )
     # Update the remote ref without changing any worktree HEAD.
     ref = f"refs/remotes/origin/{project.branch}"
-    git(repository, "fetch", "origin", f"+refs/heads/{project.branch}:{ref}")
-    history = git(
+    _run_git(repository, "fetch", "origin", f"+refs/heads/{project.branch}:{ref}")
+    history = _run_git(
         repository, "rev-list", "--first-parent", "--reverse", ref
     ).splitlines()
-    start = git(repository, "rev-parse", "--verify", project.start_commit + "^{commit}")
-    end = git(repository, "rev-parse", "--verify", project.end_commit + "^{commit}")
+    start = _run_git(repository, "rev-parse", "--verify", project.start_commit + "^{commit}")
+    end = _run_git(repository, "rev-parse", "--verify", project.end_commit + "^{commit}")
     if (
         start not in history
         or end not in history

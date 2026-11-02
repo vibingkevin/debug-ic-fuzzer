@@ -22,8 +22,9 @@ The tool does not pass `kotlin.native.version`. Both variants resolving to the s
 Each run:
 
 1. Clone or update the shared bare repository in `repos/`.
-2. Create `run/<compiler-config>-<project-config>-<timestamp>/` and two independent worktrees.
-3. Move baseline to `project` with `git worktree move`, run the Gradle task, and move it back.
+2. Create `run/<compiler-config>-<project-config>-<timestamp>/` and two independent worktrees at the selected commit.
+   The timestamp uses `YYYYMMDD-HHMMSS`; an existing directory is an error.
+3. Move baseline to `project` with `git worktree move`, check out the requested commit, run the Gradle task, and move it back even on failure.
 4. Repeat for sut. Write logs directly to files and read them only after the build finishes.
 
 Each variant writes one result file, `baseline.json` or `sut.json`. Full Gradle logs, including konanc arguments,

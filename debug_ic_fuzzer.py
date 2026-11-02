@@ -11,14 +11,14 @@ import yaml
 
 from impl.build import build
 from impl.config import Compilers, Project, load, prepare_home
-from impl.repository import prepare_repository, git
+from impl.repository import prepare_repository, create_worktree
 
 
 def run(compilers_path: Path, project_path: Path) -> int:
     compilers = load(compilers_path, Compilers).compilers
     project = load(project_path, Project)
     root = Path.cwd()
-    destination = root / 'run' / f'{compilers_path.stem}-{project_path.stem}-{datetime.now():%Y%m%d-%H%M%S-%f}'
+    destination = root / 'run' / f'{compilers_path.stem}-{project_path.stem}-{datetime.now():%Y%m%d-%H%M%S}'
     destination.mkdir(parents=True)
     with ExitStack() as temporary:
         homes = {name: prepare_home(c, compilers_path.parent, temporary) for name, c in compilers.items()}
@@ -26,7 +26,7 @@ def run(compilers_path: Path, project_path: Path) -> int:
             raise ValueError('baseline and sut cannot use the same Native home')
         repository, revision = prepare_repository(root / 'repos', project)
         for name in ('baseline', 'sut'):
-            git(repository, 'worktree', 'add', '--detach', str(destination / name), revision)
+            create_worktree(repository, destination / name, revision)
         failed = False
         for name in ('baseline', 'sut'):
             result = build(repository, destination, name, revision, project, compilers[name], homes[name], project_path.parent)
