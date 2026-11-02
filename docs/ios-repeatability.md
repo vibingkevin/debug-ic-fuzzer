@@ -20,14 +20,14 @@ Both failures reproduce by invoking the Apple linker directly on unchanged input
 
 ## Use the verified workaround
 
-Add these entries to `gradle_args` in an Animeko project configuration alongside the existing arguments:
+`configs/animeko.yaml` enables the external script through its existing `gradle_args`:
 
 ```yaml
   - "-I"
   - "{config_dir}/animeko-reproducible.init.gradle"
 ```
 
-The supplied init script keeps all Kotlin 2.4.21 `ios_arm64` platform linker flags except the early `-lSystem`, then adds `-lSystem` after compiler-rt and selects small stubs. Both baseline and sut receive the same options. The compiler distribution, IC settings, and comparison rules are unchanged. The default project configuration does not enable it.
+The supplied init script keeps all Kotlin 2.4.21 `ios_arm64` platform linker flags except the early `-lSystem`, then adds `-lSystem` after compiler-rt and selects small stubs. Both baseline and sut receive the same options. The compiler distribution, IC settings, and comparison rules are unchanged. Remove these two Gradle arguments to reproduce the original linker behavior.
 
 Five real Gradle/Kotlin links with these options produced identical complete artifact inventories, including the original framework binary, headers, metadata, and dSYM. Every link rebuilt zero Native cache units. Framework MD5: `a838ec7a49a75652cfd5b91be45b356e`; production MD5: `e4248cb7e84112736dbafe19915d45e4`. This verifies repeated warm links at one commit.
 
@@ -45,4 +45,6 @@ The first pair started with empty project/dependency caches and shared existing 
 
 The override is specific to the tested Kotlin version's platform flags. Recheck it when upgrading. Small stubs add an extra branch in Objective-C dispatch; Apple describes the size/performance tradeoff in [WWDC22](https://developer.apple.com/videos/play/wwdc2022/110363/). Runtime performance was not measured. This is an explicit test workaround, not a compiler or Apple linker fix.
 
-For an upstream fix, make runtime-library ordering deterministic in Kotlin's `MacOSBasedLinker.finalLinkCommands()` and report the duplicate message-send GOT ordering to Apple. Removing UUID/debug data or teaching the comparator to ignore differing instructions would conceal the failure.
+For an upstream fix, adjust the already-deterministic runtime-library order in Kotlin's `MacOSBasedLinker.finalLinkCommands()` and report the duplicate message-send GOT ordering to Apple. Removing UUID/debug data or teaching the comparator to ignore differing instructions would conceal the failure.
+
+See [the reproducer and handoff](../reproducers/apple-linker/HANDOFF.md) for commands, evidence locations, and unresolved questions.

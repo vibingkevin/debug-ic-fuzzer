@@ -15,3 +15,5 @@ gradle_args:
   - "-Pani.enable.ios=true"            # Enable the upstream iOS targets.
   - "-Pani.build.framework=true"        # Enable the framework used by the application.
   - "-Porg.gradle.java.installations.fromEnv=JDK_JBR"
+  - "-I"
+  - "{config_dir}/animeko-reproducible.init.gradle"  # Device linker workaround; see docs/ios-repeatability.md.
