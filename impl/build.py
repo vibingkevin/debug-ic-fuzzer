@@ -36,6 +36,7 @@ def build_project(project_directory: Path, project_config: Project, compiler_con
     """
     auto_cache_directory = project_directory / ".auto-cache"
     auto_cache_directory.mkdir(parents=True, exist_ok=True)
+    gradle_user_home = config.PROJECT_ROOT / ".gradle-home"
     konan_data_directory = config.PROJECT_ROOT / ".konan"
     konan_data_directory.mkdir(exist_ok=True)
     command = [
@@ -43,7 +44,7 @@ def build_project(project_directory: Path, project_config: Project, compiler_con
         project_config.task,
         *project_config.gradle_args,
         "--gradle-user-home",
-        str(config.PROJECT_ROOT / ".gradle-home"),
+        str(gradle_user_home),
         "--console=plain",
         "-I",
         str(gradle_init_script_path()),
@@ -58,7 +59,9 @@ def build_project(project_directory: Path, project_config: Project, compiler_con
     gradle_log_path = project_directory.parent / f"{record_stem}.gradle.log"
     started = time.monotonic()
     with gradle_log_path.open("w") as output:
-        code = subprocess.run(command, cwd=project_directory, env={**os.environ, "KONAN_DATA_DIR": str(konan_data_directory), "ZERO_AR_DATE": "1"}, stdout=output, stderr=subprocess.STDOUT).returncode
+        code = subprocess.run(
+            command, cwd=project_directory, env={**os.environ, "GRADLE_USER_HOME": str(gradle_user_home), "KONAN_DATA_DIR": str(konan_data_directory), "ZERO_AR_DATE": "1"}, stdout=output, stderr=subprocess.STDOUT
+        ).returncode
     seconds = time.monotonic() - started
     log_text = gradle_log_path.read_text(errors="replace")
     task_states = re.findall(r"^> Task " + re.escape(project_config.task) + r"(?: ([A-Z-]+))?$", log_text, re.MULTILINE)

@@ -85,7 +85,7 @@ Collection and comparison:
 Strip errors are recorded and stop replay. A production difference is a comparison failure, not proof of a compiler bug.
 Sources and outputs remain in their worktrees. `repos/` and `run/` are ignored by Git.
 
-The tool passes `--gradle-user-home <tool-root>/.gradle-home`, overriding the inherited `GRADLE_USER_HOME`.
+The tool sets `GRADLE_USER_HOME=<tool-root>/.gradle-home` and passes the matching `--gradle-user-home`, so both the Wrapper and Gradle use the shared directory instead of the inherited home.
 All projects, runs, and both compiler variants share this directory and reuse downloaded dependencies.
 Gradle receives `KONAN_DATA_DIR=<tool-root>/.konan`, overriding the inherited environment without changing the parent process.
 The final link uses `-Xtemporary-files-dir=<run>/project/.tmp`, cleared before and after successful execution.
