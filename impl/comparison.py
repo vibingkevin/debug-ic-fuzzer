@@ -1,20 +1,19 @@
-"""Compare final products; keep platform-specific normalization in one function."""
+"""Collect and compare final products, delegating binary normalization by format."""
 
 from pathlib import Path
 import hashlib
-import subprocess
 import tempfile
 
 from impl.collection import is_within_directory, normalize_text_content, snapshot_file
-from impl.apple import compute_apple_production_md5, is_apple_binary
+from impl import elf, macho
 
 
 def find_product_files(build_result: dict) -> dict[str, Path]:
     """Find final product files while build_result's cwd points to the active project.
 
     build_result supplies cwd and link.output. Return recorded project paths mapped to physical
-    files beside the output, including framework dSYM files. Require Linux ELF or an
-    Apple framework binary, generated headers for libraries, and no file symlinks.
+    files beside the output, including framework dSYM files. Require ELF or a
+    Mach-O framework binary, generated headers for libraries, and no file symlinks.
     """
     project = Path(build_result["cwd"])
     output = Path(build_result["link"]["output"])
@@ -25,12 +24,12 @@ def find_product_files(build_result: dict) -> dict[str, Path]:
     with binary.open("rb") as stream:
         header = stream.read(8)
     if framework:
-        if not is_apple_binary(header):
+        if not macho.is_binary(header):
             raise ValueError("Expected a Mach-O binary or static archive in the framework")
         if not list((output / "Headers").glob("*.h")) or not (output / "Info.plist").is_file() or not (output / "Modules/module.modulemap").is_file():
             raise ValueError("The framework's headers, Info.plist, or modulemap are missing")
-    elif header[:4] != b"\x7fELF":
-        raise ValueError("Expected a Linux ELF product or an Apple framework")
+    elif not elf.is_binary(header):
+        raise ValueError("Expected an ELF product or a Mach-O framework")
     files = {}
     for path in sorted(output.parent.rglob("*")):
         if path.is_symlink():
@@ -46,7 +45,7 @@ def compute_production_md5(product_path: Path, scratch_directory: Path) -> str |
     """Return the MD5 of product_path's production view without changing the original file.
 
     product_path is the product file; scratch_directory holds temporary normalized binaries.
-    Strip ELF debug data/build ID or normalize Apple binaries. Normalize headers as text;
+    Strip ELF debug data/build ID or normalize Mach-O binaries/archives. Normalize headers as text;
     hash other files unchanged. Return None for dSYM files, which are debug-only artifacts.
     """
     if any(parent.suffix == ".dSYM" for parent in product_path.parents):
@@ -55,12 +54,10 @@ def compute_production_md5(product_path: Path, scratch_directory: Path) -> str |
         return hashlib.md5(normalize_text_content(product_path.read_bytes(), product_path.name)).hexdigest()
     with product_path.open("rb") as stream:
         header = stream.read(8)
-    if is_apple_binary(header):
-        return compute_apple_production_md5(product_path, scratch_directory)
-    if header[:4] == b"\x7fELF":
-        output = scratch_directory / "product"
-        subprocess.run(["llvm-strip", "--strip-all", "--remove-section=.note.gnu.build-id", "-o", str(output), str(product_path)], check=True, capture_output=True, text=True)
-        product_path = output
+    if macho.is_binary(header):
+        return macho.compute_production_md5(product_path, scratch_directory)
+    if elf.is_binary(header):
+        return elf.compute_production_md5(product_path, scratch_directory)
     with product_path.open("rb") as stream:
         return hashlib.file_digest(stream, "md5").hexdigest()
 

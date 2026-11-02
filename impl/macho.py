@@ -1,4 +1,4 @@
-"""Normalize Apple framework binaries for production-content comparison."""
+"""Normalize Mach-O binaries and static framework archives for production-content comparison."""
 
 import hashlib
 import os
@@ -9,12 +9,12 @@ from macholib.MachO import MachO
 from macholib.mach_o import FAT_CIGAM, FAT_MAGIC, LC_CODE_SIGNATURE, LC_UUID, MH_CIGAM, MH_CIGAM_64, MH_MAGIC, MH_MAGIC_64
 
 
-def is_apple_binary(file_header: bytes) -> bool:
+def is_binary(file_header: bytes) -> bool:
     """Recognize Mach-O binaries and static archives from file_header's first eight bytes."""
     return file_header == b"!<arch>\n" or int.from_bytes(file_header[:4], "big") in {MH_MAGIC, MH_CIGAM, MH_MAGIC_64, MH_CIGAM_64, FAT_MAGIC, FAT_CIGAM}
 
 
-def compute_apple_production_md5(product_path: Path, scratch_directory: Path) -> str:
+def compute_production_md5(product_path: Path, scratch_directory: Path) -> str:
     """Hash a normalized copy of product_path in scratch_directory using Xcode tools.
 
     Keep static archive symbols/relocations needed for linking; remove debug information
@@ -23,7 +23,7 @@ def compute_apple_production_md5(product_path: Path, scratch_directory: Path) ->
     """
     with product_path.open("rb") as source:
         archive = source.read(8) == b"!<arch>\n"
-    stripped_path = scratch_directory / "apple-product"
+    stripped_path = scratch_directory / "macho-product"
     flags = ["-S"] if archive else ["-S", "-x"]
     subprocess.run(["xcrun", "strip", *flags, "-o", str(stripped_path), str(product_path)], env={**os.environ, "ZERO_AR_DATE": "1"}, check=True, capture_output=True, text=True)
     if not archive:

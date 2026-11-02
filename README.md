@@ -105,7 +105,8 @@ Execution-state mismatch is a test failure requiring investigation, not proof of
 Both collectors run inside `project`; each build JSON is written once before the worktree moves back.
 `build_project` groups project directory/config, compiler config/home/auto-cache, and the log stem.
 The replay loop expands config placeholders and adds commit/variant fields; run paths come from the project directory's parent.
-`compute_production_md5` selects production normalization; `impl/apple.py` handles Mach-O and static Apple archives.
+`impl/elf.py` and `impl/macho.py` each expose `is_binary` and `compute_production_md5`.
+`impl/comparison.py` dispatches by binary format; Mach-O handling also covers static framework archives.
 `capture.init.gradle` overrides KGP, excludes the final link from Build Cache, reports the actual compiler path, and requests the built-cache archive list.
 
 ### Inlining options
