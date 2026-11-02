@@ -26,6 +26,7 @@ class Compilers(Config):
 
     @model_validator(mode="after")
     def pair(self):
+        """Validate this config's compiler names are exactly baseline and sut; return self."""
         if set(self.compilers) != {"baseline", "sut"}:
             raise ValueError("compilers must define both baseline and sut")
         return self
@@ -42,10 +43,25 @@ class Project(Config):
 
 
 def load(path: Path, model):
+    """Read YAML from path and validate it with the supplied Pydantic model class.
+
+    Return the model instance; file, YAML, and validation errors propagate.
+    """
     return model.model_validate(yaml.safe_load(path.read_text()))
 
 
 def prepare_home(compiler: Compiler, config_dir: Path, temporary: ExitStack) -> Path:
+    """Resolve an absolute Native home, extracting archives into fresh temporary storage.
+
+    Args:
+        compiler: Kotlin version and optional distribution directory or archive.
+        config_dir: Compiler YAML directory used to resolve relative archive paths.
+        temporary: ExitStack that removes extracted distributions when closed.
+
+    Returns:
+        The distribution directory, or the expected KGP download path when no home
+        is configured. This function does not download the distribution itself.
+    """
     host = {("Darwin", "arm64"): "macos-aarch64", ("Linux", "x86_64"): "linux-x86_64"}.get((platform.system(), platform.machine()))
     if host is None:
         raise ValueError("Only Apple Silicon Mac and Linux x64 are supported")

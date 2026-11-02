@@ -16,6 +16,10 @@ from impl.repository import checkout_worktree, create_worktree, prepare_reposito
 
 @pytest.mark.parametrize("extension", ["tgz", "tar.gz"])
 def test_home_paths_and_fresh_archives(tmp_path, monkeypatch, extension):
+    """Check home resolution and archive cleanup using tmp_path for distributions.
+
+    monkeypatch fixes the host and KONAN_DATA_DIR; extension selects tgz or tar.gz.
+    """
     monkeypatch.setattr("impl.config.platform.system", lambda: "Linux")
     monkeypatch.setattr("impl.config.platform.machine", lambda: "x86_64")
     monkeypatch.setenv("KONAN_DATA_DIR", str(tmp_path / "konan"))
@@ -35,6 +39,7 @@ def test_home_paths_and_fresh_archives(tmp_path, monkeypatch, extension):
 
 
 def test_tar_cannot_escape(tmp_path):
+    """Use a malicious archive in tmp_path to verify extraction rejects parent traversal."""
     archive = tmp_path / "bad.tgz"
     with tarfile.open(archive, "w:gz") as tar:
         entry = tarfile.TarInfo("../escape")
@@ -46,6 +51,7 @@ def test_tar_cannot_escape(tmp_path):
 
 
 def test_same_default_home_fails_before_clone(tmp_path, monkeypatch):
+    """Verify shared default caches fail before cloning; monkeypatch sets cwd to tmp_path."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "compilers.yaml").write_text('compilers:\n  baseline: {kotlin_version: "2.4.21"}\n  sut: {kotlin_version: "2.4.21"}\n')
     (tmp_path / "project.yaml").write_text("repository: https://example.test/project.git\nbranch: main\nstart_commit: a\nend_commit: a\ntask: :app:link\n")
@@ -55,6 +61,7 @@ def test_same_default_home_fails_before_clone(tmp_path, monkeypatch):
 
 
 def test_same_named_repositories_use_separate_remotes(tmp_path):
+    """Create two sample repositories under tmp_path and verify remote reuse and branch isolation."""
     projects = []
     for owner in ("first", "second"):
         source = tmp_path / owner / "sample"
@@ -78,12 +85,17 @@ def test_same_named_repositories_use_separate_remotes(tmp_path):
 
 
 def test_shared_repository_independent_worktrees_and_failed_build(tmp_path, monkeypatch):
+    """Check commit selection, worktree restoration, and build failures in tmp_path.
+
+    monkeypatch isolates cwd and supplies an external Gradle home to test its override.
+    """
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("GRADLE_USER_HOME", str(tmp_path / "external-home"))
     source = tmp_path / "source"
     subprocess.run(["git", "init", "-b", "main", str(source)], check=True, capture_output=True)
 
     def local(*args):
+        """Run Git args in the fixture's source repository and return stripped stdout."""
         return subprocess.check_output(["git", "-C", str(source), *args], text=True).strip()
 
     # Use a fake local gradlew to check process execution, moves, failure logs, and arguments.
@@ -170,6 +182,11 @@ sys.exit(7 if home.endswith('fail') else 0)
 
 @pytest.mark.parametrize("failure", [None, "baseline", "sut", "production", "debug", "collection"])
 def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
+    """Verify replay order and stopping with fake builds writing records under tmp_path.
+
+    monkeypatch replaces external operations; failure selects the injected error/difference,
+    or None for success. Both variants must finish the current commit before stopping.
+    """
     import debug_ic_fuzzer as runner
     from impl.config import Compilers
 
@@ -184,6 +201,11 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
 
     @contextmanager
     def checkout(repo, directory, revision):
+        """Mark the fake project active and yield directory's sibling project path.
+
+        repo and revision are unused repository/commit arguments from the real interface;
+        directory identifies the parked variant. Always reset the active flag on exit.
+        """
         nonlocal active
         active = True
         try:
@@ -195,6 +217,13 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     monkeypatch.setattr(runner, "create_worktree", lambda repo, path, sha: created.append((path.name, sha)))
 
     def fake_build(repo, destination, name, revision, project, compiler, home, config_dir, record_name, last_link):
+        """Record one fake build and write its log, optionally failing the selected variant.
+
+        destination and record_name locate the log; name and revision identify the build.
+        last_link is checked against expected previous metadata. repo (the active worktree),
+        project, compiler, home, and config_dir are unused arguments matching build's interface.
+        Return a build record and an empty list of cache roots.
+        """
         assert active
         calls.append((revision, name))
         assert last_link == (None if revision == "a" else {"task": ":app:link"})
@@ -204,12 +233,21 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     monkeypatch.setattr(runner, "build", fake_build)
 
     def collect_result(result, destination):
+        """Check collection happens while active, optionally raising the selected failure.
+
+        result accepts cache roots or a build record; destination accepts the store or run
+        directory. Both are unused because this fake serves the two collection interfaces.
+        """
         assert active
         if failure == "collection" and calls[-1] == ("b", "baseline"):
             raise ValueError("Cache is outside the project")
         return []
 
     def compare_results(results, destination):
+        """Return injected comparison flags after verifying worktrees are parked.
+
+        results supplies the current baseline commit; destination is the unused run directory.
+        """
         assert not active
         changed = failure in ("production", "debug") and results["baseline"]["commit"] == "b"
         return dict(strict_equal=not changed, production_equal=not (changed and failure == "production"))
@@ -233,12 +271,22 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
 
 @pytest.mark.parametrize("state,previous,output,valid", [("UP-TO-DATE", True, True, True), ("UP-TO-DATE", False, True, False), ("UP-TO-DATE", True, False, False), ("FROM-CACHE", True, True, False)])
 def test_skipped_link(tmp_path, monkeypatch, state, previous, output, valid):
+    """Check skipped-link validation using fake Gradle output under tmp_path.
+
+    monkeypatch replaces subprocess execution. state is the reported task state; previous
+    enables prior link metadata, output enables an existing product, and valid is the
+    expected validation outcome.
+    """
     from contextlib import contextmanager
     import importlib
 
     builder = importlib.import_module("impl.build")
 
     def gradle(command, cwd, stdout, **kwargs):
+        """Write the selected task state to stdout and return success for command.
+
+        cwd and kwargs are unused subprocess options accepted by the fake runner.
+        """
         stdout.write(f"> Task :app:link {state}\n")
         return subprocess.CompletedProcess(command, 0)
 

@@ -12,11 +12,30 @@ from impl.validation import validate_caches, validate_result
 
 
 def init_script() -> Path:
+    """Return the Gradle init script path from the source tree or installed package data."""
     script_path = Path(__file__).parent.parent / "capture.init.gradle"
     return script_path if script_path.exists() else Path(sys.prefix) / "share/debug-ic-fuzzer/capture.init.gradle"
 
 
 def build(build_directory: Path, destination: Path, name: str, revision: str, project: Project, compiler: Compiler, home: Path, config_dir: Path, record_name: str, last_link: dict | None = None) -> tuple[dict, list[tuple[Path, str]]]:
+    """Run one Gradle build, then parse and validate its completed log.
+
+    Args:
+        build_directory: Active project worktree containing gradlew.
+        destination: Run directory where the Gradle log is written.
+        name: Compiler variant, baseline or sut, recorded in the result.
+        revision: Checked-out commit ID recorded in the result.
+        project: Gradle task and additional arguments to execute.
+        compiler: KGP version and whether an explicit Native home was configured.
+        home: Resolved Native home to verify and, when configured, pass to Gradle.
+        config_dir: Project YAML directory substituted for {config_dir} in Gradle arguments.
+        record_name: Log filename stem, including commit index, ID, and variant.
+        last_link: Previous link metadata reused only when this task is UP-TO-DATE.
+
+    Returns:
+        The build record and cache roots as (physical directory, logical prefix) pairs.
+        Build exit status and validation errors are recorded; process launch errors propagate.
+    """
     log = destination / f"{record_name}.gradle.log"
     started = time.monotonic()
     command = [

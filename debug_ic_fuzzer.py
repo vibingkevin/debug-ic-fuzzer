@@ -18,6 +18,16 @@ from impl.repository import prepare_repository, create_worktree, checkout_worktr
 
 
 def run(compilers_path: Path, project_path: Path) -> int:
+    """Replay both compilers, collect results, and stop after a failed commit pair.
+
+    Args:
+        compilers_path: YAML file defining baseline and sut distributions.
+        project_path: YAML file defining the repository, commit range, and Gradle task.
+
+    Returns:
+        0 if all pairs pass production comparison, otherwise 1. Writes results and
+        worktrees under the current directory; configuration/setup errors propagate.
+    """
     compilers = load(compilers_path, Compilers).compilers
     project = load(project_path, Project)
     root = Path.cwd()
@@ -67,6 +77,7 @@ def run(compilers_path: Path, project_path: Path) -> int:
 
 
 def main():
+    """Read CLI arguments and return the replay status; exit with 2 on setup errors."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compilers", required=True, type=Path)
     parser.add_argument("--project", required=True, type=Path)

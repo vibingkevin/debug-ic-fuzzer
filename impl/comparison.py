@@ -9,6 +9,11 @@ from impl.collection import inside, normalized_text, snapshot
 
 
 def products(result: dict) -> dict[str, Path]:
+    """Find final product files while result's cwd still points to the active project.
+
+    result supplies cwd and link.output. Return logical project paths mapped to physical
+    files beside the output; require Linux ELF, a header for .so, and no file symlinks.
+    """
     project = Path(result["cwd"])
     output = Path(result["link"]["output"])
     if not inside(output, project) or not output.is_file():
@@ -28,6 +33,11 @@ def products(result: dict) -> dict[str, Path]:
 
 
 def production_digest(path: Path, temporary: Path) -> str:
+    """Return the MD5 of path's production view without changing the original file.
+
+    path is a product file. temporary is an existing scratch directory for a stripped
+    ELF copy without its build ID. Normalize headers as text; hash other files unchanged.
+    """
     if path.suffix == ".h":
         return hashlib.md5(normalized_text(path.read_bytes(), path.name)).hexdigest()
     with path.open("rb") as stream:
@@ -41,6 +51,12 @@ def production_digest(path: Path, temporary: Path) -> str:
 
 
 def collect_products(result: dict, destination: Path):
+    """Add artifact hashes and mtimes to result while its project directory is active.
+
+    result supplies cwd and link.output and receives artifacts in place. destination is
+    the run directory passed to snapshot; no product contents are saved at this stage.
+    Raw records remain available if computing a production digest fails.
+    """
     files = products(result)
     result["artifacts"] = [snapshot(path, logical, destination / "store", save=False) for logical, path in files.items()]
     with tempfile.TemporaryDirectory(prefix="ic-compare-") as temporary:
@@ -49,6 +65,11 @@ def collect_products(result: dict, destination: Path):
 
 
 def save_artifacts(results: dict, destination: Path):
+    """Save recorded original products after worktrees return to baseline/sut locations.
+
+    results maps variant names to records containing logical artifact paths. destination
+    contains those worktrees and the shared store where contents are deduplicated.
+    """
     # This is the only place that resolves recorded paths after the worktrees move back.
     for name, result in results.items():
         for entry in result.get("artifacts", []):
@@ -57,6 +78,15 @@ def save_artifacts(results: dict, destination: Path):
 
 
 def compare(results: dict, destination: Path) -> dict:
+    """Compare baseline/sut artifact records and save original products on strict differences.
+
+    Args:
+        results: Variant records with artifact paths, raw MD5s, and production MD5s.
+        destination: Run directory containing parked worktrees and the shared store.
+
+    Return strict_equal and production_equal, plus differing path lists on strict
+    differences. Missing files count as differences; equal records require no file reads.
+    """
     baseline, sut = ({f["path"]: f for f in results[name]["artifacts"]} for name in ("baseline", "sut"))
     missing = baseline.keys() ^ sut.keys()
     common = baseline.keys() & sut.keys()

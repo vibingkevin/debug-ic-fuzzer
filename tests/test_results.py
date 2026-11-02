@@ -11,6 +11,7 @@ from impl.validation import validate_caches
 
 @pytest.fixture
 def products(tmp_path):
+    """Build identical baseline/sut ELF libraries and headers under tmp_path; return link records."""
     source = tmp_path / "source.c"
     results = {}
     for name in ("baseline", "sut"):
@@ -26,6 +27,7 @@ def products(tmp_path):
 
 
 def collect_pair(results, destination):
+    """Collect both variant records in results through destination/project, restoring each directory."""
     for name, result in results.items():
         active = destination / "project"
         parked = destination / name
@@ -37,6 +39,7 @@ def collect_pair(results, destination):
 
 
 def test_equal_products_keep_hashes_without_contents(tmp_path, products):
+    """Verify identical products fixture records compare without saved files in tmp_path."""
     collect_pair(products, tmp_path)
     # Equal results need no access to the parked products.
     shutil.rmtree(tmp_path / "baseline")
@@ -52,6 +55,10 @@ def test_equal_products_keep_hashes_without_contents(tmp_path, products):
 
 @pytest.mark.parametrize("change", ["debug", "build-id", "code", "header", "missing"])
 def test_product_differences(tmp_path, products, change):
+    """Mutate products under tmp_path and check comparison flags and saved original bytes.
+
+    change selects a debug, build-ID, code, header, or file-set difference.
+    """
     output = tmp_path / "sut/build/libdemo.so"
     if change == "debug":
         data = tmp_path / "debug-data"
@@ -86,6 +93,7 @@ def test_product_differences(tmp_path, products, change):
 
 
 def test_header_whitespace_is_nonblocking_but_originals_are_saved(tmp_path, products):
+    """Alter products fixture header whitespace in tmp_path; require equal production hashes and saved originals."""
     (tmp_path / "sut/build/libdemo_api.h").write_bytes(b" \r\nint value(void);\r\n")
     collect_pair(products, tmp_path)
     result = compare(products, tmp_path)
@@ -94,6 +102,7 @@ def test_header_whitespace_is_nonblocking_but_originals_are_saved(tmp_path, prod
 
 
 def test_cache_snapshot_normalization_dedup_and_no_binary_contents(tmp_path):
+    """Create caches in tmp_path and verify normalized text deduplication and hash-only binary records."""
     root = tmp_path / "project/build/ic"
     root.mkdir(parents=True)
     metadata = root / "metadata.properties"
@@ -120,6 +129,7 @@ def test_cache_snapshot_normalization_dedup_and_no_binary_contents(tmp_path):
 
 @pytest.mark.parametrize("escape", ["ic", "auto", "archive", "symlink"])
 def test_cache_boundary_errors(tmp_path, escape):
+    """Check cache boundary rejection in tmp_path; escape selects an IC, override, archive, or symlink case."""
     (tmp_path / "project/build/ic").mkdir(parents=True)
     record = dict(cwd=str(tmp_path / "project"), native_home=str(tmp_path / "native"), link={"ic_cache_dir": str(tmp_path / "project/build/ic")}, exit_code=0)
     cache_paths = []
@@ -140,7 +150,10 @@ def test_cache_boundary_errors(tmp_path, escape):
 
 
 def test_strip_error_retains_hashes_and_can_save_after_restore(tmp_path, products, monkeypatch):
+    """Use monkeypatch to fail stripping products; verify raw hashes and later saving under tmp_path."""
+
     def fail(*_):
+        """Raise a simulated strip error; ignore all production_digest arguments in _."""
         raise OSError("strip unavailable")
 
     monkeypatch.setattr("impl.comparison.production_digest", fail)

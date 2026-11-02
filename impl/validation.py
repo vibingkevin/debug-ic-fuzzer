@@ -6,6 +6,11 @@ from impl.collection import inside
 
 
 def validate_result(result: dict) -> str | None:
+    """Check a successful build record's link state, Native home, and output location.
+
+    result is the parsed build record. Return an error message or None; failed builds
+    return None because their nonzero exit_code already signals failure to the caller.
+    """
     if result["exit_code"] != 0:
         return None
     if result["task_state"] == "FROM-CACHE":
@@ -25,7 +30,16 @@ def validate_result(result: dict) -> str | None:
 
 
 def validate_caches(result: dict, cache_paths: list[str], report_path: str | None) -> list[tuple[Path, str]]:
-    """Validate resolved cache locations and this invocation's archive report."""
+    """Validate cache boundaries and return (physical root, logical prefix) pairs.
+
+    Args:
+        result: Build record with cwd, native_home, exit_code, and resolved link metadata.
+        cache_paths: Explicit cache paths parsed from this invocation's compiler options.
+        report_path: Current built-cache report, or None when no current report applies.
+
+    Track the compiler's klib/cache and the link's project-local IC directory. Raise
+    ValueError for missing required metadata/reports or paths outside tracked boundaries.
+    """
     project = Path(result["cwd"])
     roots = [(Path(result["native_home"]) / "klib/cache", "native-home/klib/cache")]
     link = result["link"]
