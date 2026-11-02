@@ -1,6 +1,0 @@
-# KGP downloads the matching Native distribution into the tool-local .konan directory.
-compilers:
-  baseline:
-    kotlin_version: "2.4.21"
-  sut:
-    kotlin_version: "2.4.21"
