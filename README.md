@@ -13,6 +13,7 @@ python3 -m venv .venv
 ```
 
 For iOS use `--project configs/ic-sample-ios.yaml` and a compiler configuration with macOS distributions, or omit both Native homes to let KGP download them.
+The manually triggered `Animeko` GitHub Actions workflow replays `configs/animeko.yaml` with `configs/compilers.yaml` on macOS ARM.
 
 Compiler and project configurations are separate YAML files in `configs/`.
 Relative CLI configuration paths resolve from `PROJECT_ROOT`, independent of the shell working directory.
