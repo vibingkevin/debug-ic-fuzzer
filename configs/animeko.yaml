@@ -6,6 +6,7 @@ start_commit: "741b66951a0f739576880dd9ba99b6daa0d113bd"
 end_commit: "366484bce7bb0118eb5b45598db1580cf7b30de2"
 # Two consecutive commits changing commonMain code compiled into iOS.
 # For five commits, keep start_commit and use end_commit: "f9843a046e721f063ee23135c9c034930d8f27cc".
+# For the tested 30-commit range, use end_commit: "79a4fc8b2d0005b91a0b51b8ee98a0f5125d4e89"; see docs/ios-repeatability.md for results and the interrupted retry.
 # Alternative range (12 commits):
 # start_commit: "0e5575894362ed2e760f48b8e44d12f918d59672"
 # end_commit: "e086c335ca21a7acb3d9bcb933eb6125223ce498"
