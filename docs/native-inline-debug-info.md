@@ -35,7 +35,13 @@ Inside the cache for `AniAppContent.kt`, the same inline records contain:
 
 `DW_AT_decl_file`, `DW_AT_decl_line`, `DW_AT_call_file`, `DW_AT_call_line`, and `DW_AT_call_column` change. The first affected final compilation unit starts at DWARF offset `0x864a1a`. All 239,739 relocation records match after omitting their debug offsets; symbol names, object addresses, final addresses, and symbol sizes match.
 
-Kotlin's `IrToBitcode.kt` emits these lambda scopes from `IrInlinedFunctionBlock.inlinedFunctionFileEntry` and interprets source offsets using that file entry. The evidence locates the failure in Kotlin's inline source-location generation before linking. A specific compiler source patch has not been validated; this report does not attribute it to one untested implementation detail.
+## Inliner source path
+
+A further cache-child IR dump pins the first divergence to `InlineAllFunctions`. `AniAppContent`'s complete IR dump is identical before the phase. Afterward, exactly six `inlinedFunctionFileEntry` paths differ, matching the later DWARF differences. These dumps were captured with diagnostic flags in `additionalCacheFlags.ios_arm64`, so the actual cache compilations received them.
+
+The corresponding source path in Kotlin 2.4.21 is `FunctionInlining.visitFunctionAccess()`: it recursively transforms `actualCallee.body` in place and then its default arguments before `CallInlining.inlineFunction()` copies the callee. The recursive transformation retains the caller's `fileEntriesStack`. `InlinePostprocessor.visitCall()` writes that current file entry into lambda `IrInlinedFunctionBlock` nodes. Later visits reuse already-expanded blocks and their stored file entries. Consequently, shared inline templates can retain source locations from an earlier consuming file; changing the files compiled together changes the retained location.
+
+`IrToBitcode.InlinedBlockScope` then emits these lambda scopes from `inlinedFunctionFileEntry` and interprets source offsets using that file entry, explaining the different filenames, lines, and columns. The phase and field divergence are measured; the source path explains their propagation. A proposed source correction must preserve the callee's file context during recursive template expansion, but no compiler patch has been validated yet.
 
 ## Evidence
 
@@ -45,5 +51,6 @@ Under ma1's existing `run/compilers-animeko-five-repro-20261103-032007/dwarf-inv
 - `whole/` and `partial/`: the eight original archives and decoded DWARF.
 - `main-cache-dwarf.diff`: the source-file, line, and column changes before Apple linking.
 - `archive-comparison.json`: raw versus debug-stripped archive comparison.
+- `cache-ir-probe/BEFORE.diff` and `AFTER.diff`: identical input IR and the six inline-file-entry changes.
 
 The replay's original `summary.csv` and failure records remain unchanged. Keep reporting the strict difference; production equality does not establish debug-info correctness.
