@@ -1,4 +1,4 @@
-# Run with --compilers configs/compilers-cpf-2.4.yaml --project configs/workbench-ohos.yaml.
+# Run with --compilers configs/compilers-cpf-2.4.21.yaml --project configs/workbench-ohos.yaml.
 repository: https://gitcode.com/linhandev/kmp-cmp-test-demo.git
 branch: keyguard/workbench
 start_commit: 0e606e24c07a817c95a03ab37dcf0c7e5776b788

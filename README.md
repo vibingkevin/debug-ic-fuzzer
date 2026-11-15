@@ -1,94 +1,103 @@
 # debug-ic-fuzzer
 
-debug-ic-fuzzer replays an inclusive commit range with a baseline compiler and a system-under-test compiler. It builds both variants from the same absolute project path, gives them independent worktrees and project/dependency caches, and compares the resulting Native products and selected cache units. The stdlib and platformlib caches are shared when both variants use the same Native home. The tool is intended for build repeatability and incremental-cache investigations, it does not run functional tests.
+Find the commit where two Kotlin/Native incremental builds start producing different output. The tool replays a Git history with a `baseline` compiler and a `sut` (system under test), compares their products after each commit, and records the builds for investigation.
 
-## Prerequisites
+Both sides keep their own build state as the replay advances. Using the same compiler on both sides checks repeatability; changing `sut` compares a candidate compiler against the baseline. This is an incremental replay, not a clean rebuild of every commit. It builds Native products and does not run application tests.
 
-Supported hosts: Apple Silicon macOS and Linux x64.
+## Run the IC sample
 
-Runtime dependencies:
+Use Linux x64 or Apple Silicon macOS with Python 3.12+, Git, and a JDK compatible with the sample (the CI uses JDK 21). Linux needs `llvm-strip` on `PATH`; macOS needs Xcode selected with `xcode-select`. Run these commands from this repository:
 
-- Python 3.12 or newer, Git, and a JDK compatible with the project being built.
-- Linux: `llvm-strip` for ELF production-byte comparisons (provided by the `llvm` package on Ubuntu).
-- macOS: Xcode selected with `xcode-select`, providing the tools used for Mach-O stripping and signature removal.
-
-Additional test dependencies:
-
-- Linux: a C compiler available as `cc` and `objcopy`, used to create and modify ELF test fixtures (provided by `build-essential` and `binutils` on Ubuntu).
-- macOS: the selected Xcode’s `clang` and `libtool`, used to create framework test fixtures.
-
-## Installation and first run
-
-Create a virtual environment, install the project, and invoke the console entry point with one compiler YAML and one project YAML:
-
-~~~sh
+```sh
 python3 -m venv .venv
-.venv/bin/pip install -e .
+.venv/bin/python -m pip install -e .
 .venv/bin/debug-ic-fuzzer \
   --compilers configs/compilers-2.4.21.yaml \
-  --project configs/ic-sample-ios.yaml
-~~~
+  --project configs/ic-sample-linux.yaml
+```
 
-For iOS, use a compiler configuration containing macOS Native distributions and an iOS project configuration such as configs/ic-sample-ios.yaml. If a compiler YAML omits kotlin_native_home, KGP downloads the matching Native distribution into the tool-local .konan directory. The manually triggered Animeko workflow uses configs/openani-animeko.yaml on a macOS ARM runner.
+On macOS, use `configs/ic-sample-ios.yaml` instead. The Linux sample builds an executable; the macOS sample builds an iOS simulator framework. Both replay from the configured baseline through the latest commit on `main`.
 
-## Configuration
+The compiler configuration above uses Kotlin 2.4.21 on both sides. Gradle downloads the Native distribution on first use. To use the checked-in distributions with the inline DWARF fix, install Git LFS, run `git lfs pull`, and select `configs/compilers-2.4.21-9267.yaml`. That configuration also uses the same compiler on both sides; it selects the archive for the current host.
 
-Compiler and project settings live in separate YAML files. The following single example shows the accepted fields and their meaning; the File: comments mark where the two parts belong and are explanatory comments, not extra schema:
+After repository preparation, a progress bar advances once per completed commit pair. Gradle output goes into log files rather than streaming to the terminal. The tool prints the run directory when replay finishes.
 
-~~~yaml
-# File: configs/compilers-2.4.21.yaml
+## Read the result
+
+Start with `summary.csv` in the printed `run/<compiler-config>-<project-config>-<timestamp>/` directory. Each row represents one commit and contains the comparison result, each Gradle invocation’s duration, and the number of cache archives reported as rebuilt.
+
+There are two equality checks. `strict_equal` compares original product bytes, including debug information. `production_equal` compares a normalized view that removes debug data and binary identity differences while retaining code, headers, and resources. Production equality is a byte-comparison result, not a functional correctness test.
+
+| Result | What happens next |
+| --- | --- |
+| Both checks are true | Continue to the next commit. |
+| Strict differs, production matches | Save the original products and continue; inspect the debug or identity difference separately. |
+| Production differs | Save the original products and stop after this commit pair. |
+| Both links are `UP-TO-DATE` | Skip comparison and continue. Equality fields are blank in CSV and `null` in JSON. |
+| Only one link is `UP-TO-DATE`, or a build/collection fails | Record the error and stop after this commit pair. |
+
+For a failing or differing row, open its `0000-<commit12>-comparison.json` first, then the corresponding `-baseline.json`, `-sut.json`, and `.gradle.log` files. JSON records contain the commands, compiler paths, errors, artifact hashes, and cache snapshots. Saved product contents are under that run’s `store/` directory.
+
+A completed replay returns exit code 0; a failed comparison or recorded build error returns 1. An exception that aborts preparation or replay returns 2 and bypasses summary generation. See [Replay details](docs/replay.md) for comparison rules, cache scope, and evidence retention.
+
+## Replay your project
+
+Choose one final Native link task and a commit range that builds with the selected compilers. The repository must provide `gradlew`. Save a project YAML such as:
+
+```yaml
+repository: "https://github.com/example/project.git"
+branch: "main"
+start_commit: "<full commit ID>"
+end_commit: "latest"
+direction: forward
+task: ":app:linkDebugExecutableLinuxX64"
+gradle_args: []
+```
+
+Both endpoints are included. `latest` resolves to the fetched tip of `branch`. The range follows first-parent history; `reverse` visits the same range backwards, and equal endpoints build just one commit. An endpoint missing from that history is an error. When the upstream history is rewritten, update the configured commit IDs.
+
+Use `gradle_args` for project properties and extra init scripts. `{config_dir}` expands to the project YAML’s directory, so an init-script argument can be written as `{config_dir}/project.init.gradle`.
+
+The supplied [Animeko configuration](configs/animeko-openani.yaml) demonstrates project-specific setup and Apple linker workarounds. The [Workbench configuration](configs/workbench-ohos.yaml) targets OHOS and lists its SDK, toolchain, and host requirements. These projects need their own build prerequisites in addition to the fuzzer’s dependencies.
+
+## Select the compilers
+
+A compiler YAML requires exactly `baseline` and `sut`. `kotlin_version` selects the Kotlin Gradle plugin version; the tool verifies the loaded plugin and the Native home used by the link. To test a local Native compiler while keeping KGP fixed:
+
+```yaml
 compilers:
-  # Both entries are required. The fuzzer builds each commit with both variants.
   baseline:
-    kotlin_version: "2.4.21"       # Required compiler version passed to KGP.
-    # Optional absolute Native home or a path relative to this compiler YAML.
-    # A .tgz/.tar.gz archive is extracted into a fresh /tmp directory per run.
-    kotlin_native_home: "../compilers/kotlin-native-prebuilt-linux-x86_64-2.4.21.tar.gz"
+    kotlin_version: "2.4.21"
   sut:
     kotlin_version: "2.4.21"
-    kotlin_native_home: "../compilers/kotlin-native-prebuilt-linux-x86_64-2.4.21.tar.gz"
+    kotlin_native_home: "/absolute/path/to/kotlin-native"
+```
 
-# File: configs/project.yaml
-repository: "https://github.com/example/project.git" # HTTPS, SSH, or git@ URL.
-branch: "main"                         # Must contain both commit endpoints.
-start_commit: "<oldest-commit>"        # Inclusive; use a full commit ID.
-end_commit: "<newest-commit>"          # Inclusive; latest resolves the fetched branch tip.
-direction: forward                     # forward or reverse replay order.
-task: ":app:linkDebugExecutableLinuxX64" # Final Native link task to execute.
-gradle_args:                             # Optional arguments forwarded to Gradle.
-  - "-Pfeature=true"
-~~~
+Without `kotlin_native_home`, KGP manages the distribution under the tool’s `.konan/` directory. With it, the tool passes the resolved directory as `kotlin.native.home`. An archive is extracted into a fresh `/tmp` directory for each variant and removed when the run exits.
 
-Relative CLI paths are resolved from PROJECT_ROOT, not from the shell's current directory. A compiler home supplied as a directory must be absolute; an archive may be relative to the compiler YAML. A kotlin_native_home list is also accepted when it contains archives for multiple hosts, but exactly one filename must contain the current host token (linux-x86_64 or macos-aarch64). The project repository must be reachable by Git, task must be a Gradle task path, and both endpoints must be on the selected branch's main line. Equal endpoints build one commit. forward follows ancestry from oldest to newest, while reverse follows the same range in the opposite order; merge side branches are not replayed independently.
+| Input | Path or selection rule |
+| --- | --- |
+| Relative `--compilers` or `--project` path | Resolved from the directory containing `debug_ic_fuzzer.py` (`PROJECT_ROOT`). |
+| Native distribution directory | Requires an absolute path containing `bin/konanc`. |
+| Relative `.tgz` or `.tar.gz` path | Resolved from the compiler YAML’s directory. |
+| List of archives | Exactly one filename must contain the current host token: `linux-x86_64` or `macos-aarch64`. |
 
-gradle_args are passed through unchanged after replacing {config_dir} with the directory containing the project YAML. The tool does not pass kotlin.native.version. When both variants resolve to the same Native home, they share its stdlib and platformlib caches.
+Absolute CLI and archive paths are used directly. The tool leaves the project’s inlining options unchanged.
 
-## Replay and outputs
+## Investigate a difference
 
-For each run the tool updates repos/<repository-name>.git, creates a timestamped directory under run/, and prepares two independent worktrees. It moves the baseline worktree to project, checks out the commit, runs Gradle, parses the completed log, validates the final link, and records the result before doing the same for the sut worktree. Both worktrees retain their build outputs and caches. The timestamp format is YYYYMMDD-HHMMSS, and an existing run directory is an error.
+[Replay details](docs/replay.md) explains which state is shared, how product bytes are normalized, and what the cache records establish. Isolated reproductions of known differences are documented separately:
 
-Each replayed commit produces two JSON records and two Gradle logs named 0000-<commit12>-baseline.json, 0000-<commit12>-baseline.gradle.log, and the corresponding sut files. The records include the command, compiler path, duration, exit code, final-link details, selected cache files, and artifact hashes. A third 0000-<commit12>-comparison.json records strict_equal and production_equal. If both links are UP-TO-DATE, the equality fields are null with a skipped reason and replay continues. If only one side is UP-TO-DATE, the tool records an execution-state error and stops. A production difference, missing file, strip failure, or collection error stops the replay; a difference only in the unstripped product does not.
+- [Objective-C stub GOT ordering](issues/smallstub/): `ld-prime` layout variation and the small-stub workaround.
+- [`___chkstk_darwin` provider selection](issues/chkstk/): `ld-prime` chooses between system and compiler-rt implementations.
+- [Inline DWARF source ownership](issues/inline-dwarf/): Kotlin/Native source-location errors, fixed on upstream `master`.
 
-After replay, impl/summary.py writes summary.csv from the records and Git history. It includes the commit, changed-file counts, line counts, equality results, durations, and rebuilt-cache counts. Rebuilt counts are unique archive paths reported by the compiler; UP-TO-DATE counts as zero, while unknown or unperformed values remain blank.
+## Development
 
-## Cache and artifact comparison
+```sh
+.venv/bin/python -m pip install -e '.[test,format]'
+.venv/bin/python -m pytest -q
+.venv/bin/python -m ruff format --check .
+```
 
-The collector reads only the cache units listed in the current -Xdump-built-caches-to report. A reported <cache-unit>/bin/*.a selects the containing unit, including metadata and IR; per-file caches select only the reported file unit, while monolithic caches select the whole library. An empty report becomes [], UP-TO-DATE becomes null, and a missing report after a failed build does not trigger a fallback scan. Cache metadata and dependency lists are normalized before hashing, with compilerFingerprint removed from metadata; binary cache contents are hashed but not retained.
-
-The artifact collector supports .kexe, .so plus its generated header, and a flat iOS .framework with its sibling .dSYM. Strict comparison uses raw MD5 values for every file. Production comparison uses a temporary stripped view: ELF build IDs and debug information are removed, Mach-O symbols, signatures, and UUIDs are removed, and static archive timestamps are normalized. Headers, module maps, Info.plist, and resources remain part of the production view. dSYM files participate only in strict comparison. Differences and failed records retain the original product contents in the shared store/ directory; equal products retain hashes only.
-
-The tool sets an isolated GRADLE_USER_HOME and KONAN_DATA_DIR under its root, uses ZERO_AR_DATE=1, gives each run a temporary-files directory, and sets project IC and automatic-cache directories through the init script. The stdlib and platformlib caches in `<Native home>/klib/cache` are shared when both variants resolve to the same home; -Xauto-cache-dir does not redirect these caches. Archive-based Native homes are extracted separately for each variant, so their stdlib and platformlib caches are independent. Existing stdlib and platformlib caches are not cleared. Build Cache and Configuration Cache follow the project settings, while the final Native link is excluded from Build Cache reads and writes. UP-TO-DATE links retain their command, task state, duration, and log but do not collect existing outputs.
-
-## Inlining options
-
-The default scenarios do not change Kotlin/Native inlining options. Kotlin/Native 2.4.21 accepts default, intra-module, full, and disabled for -Xklib-ir-inliner=. Kotlin 2.4 defaults to intra-module early inlining, while 2.5 extends the default to cross-module inlining. These are compiler options, not Gradle arguments, and this tool does not set them. See the official release notes for the language-version behavior: https://kotlinlang.org/docs/whatsnew-eap.html#consistent-cross-module-function-inlining-during-klib-compilation.
-
-Known macOS linker and Kotlin/Native debug-information reproductions are kept under issues/:
-
-- issues/smallstub/ covers Objective-C selector-stub GOT ordering.
-- issues/chkstk/ covers ___chkstk_darwin provider selection.
-- issues/inline-dwarf/ covers cache-scope-dependent inline DWARF file entries.
-
-## Tests and formatting
-
-With a Python 3.12+ environment active, run the test suite with .venv/bin/python -m pytest -q. Formatting dependencies can be installed with python -m pip install -e ".[test,format]"; use python -m ruff format . to format or python -m ruff format --check . to check without changing files. The pinned Ruff configuration allows 240-column lines and does not force-wrap trailing-comma expressions.
+Linux ELF tests need `cc`, `objcopy`, and `llvm-strip`; on Ubuntu these are provided by `build-essential`, `binutils`, and `llvm`. macOS framework tests use Xcode’s `clang` and `libtool`. Platform-specific tests are skipped on other hosts.
