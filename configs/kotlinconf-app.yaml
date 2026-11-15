@@ -1,0 +1,10 @@
+# Eight commits after the upstream Compose 1.12.1 theme API fix.
+repository: "https://github.com/JetBrains/kotlinconf-app.git"
+branch: "main"
+start_commit: "4e61b79387ed2b840ba8541d5542daef0f833173"
+end_commit: "f1760d7f3a5dce5648b3933d44f19325a19e6346"
+direction: forward
+task: ":app:shared:linkDebugFrameworkIosSimulatorArm64"
+gradle_args:
+  - "--max-workers=2"
+  - "-Dorg.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8"
