@@ -17,10 +17,11 @@ jobs:
     timeout-minutes: 120
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
-      GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-home
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v6
+        with:
+          lfs: true
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -39,11 +40,11 @@ jobs:
             .gradle-home/caches/modules-2
             .gradle-home/wrapper/dists
             .konan/dependencies
-          key: animeko-dependencies-macos-arm64-${{ hashFiles('configs/compilers.yaml', 'configs/animeko.yaml') }}
+          key: animeko-dependencies-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/animeko-openani.yaml', 'configs/animeko-reproducible.init.gradle') }}
       - name: Replay Animeko
         run: |
           export JDK_JBR="$JAVA_HOME"
-          .venv/bin/python debug_ic_fuzzer.py --compilers configs/compilers.yaml --project configs/animeko.yaml
+          .venv/bin/python debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/animeko-openani.yaml
       - name: Upload replay results
         if: always()
         uses: actions/upload-artifact@v6

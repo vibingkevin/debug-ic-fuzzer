@@ -36,7 +36,6 @@ jobs:
             project: configs/ic-sample-ios.yaml
     timeout-minutes: 45
     env:
-      GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-home
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v6
