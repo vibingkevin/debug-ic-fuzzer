@@ -1,7 +1,7 @@
 # Both variants use the checked-in Kotlin/Native 2.4.21 distributions built from
 # v2.4.21 tag commit 9180ce6a7a7d3627f88b424717583f28ddca052d
 # with JetBrains/kotlin#9267 (KT-90639) fix.
-# One archive per host; the tool extracts only the archive matching the current host.
+# One archive per host; the tool extracts only the archive containing current host arch name.
 compilers:
   baseline:
     kotlin_version: "2.4.21"
