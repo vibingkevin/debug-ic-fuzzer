@@ -1,0 +1,7 @@
+repository: https://github.com/vibingkevin/native-ic-sample.git
+branch: main
+start_commit: db60251d556ced9a5849a022689df443538afea6
+end_commit: 51931bd2626afa8166234dac197f1fa54e44228f
+# README-only replay check: 34a4e59cafa76962895c9201adb46555f91e0513
+direction: forward
+task: :app:linkDebugExecutableLinuxX64

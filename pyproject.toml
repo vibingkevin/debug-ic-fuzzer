@@ -1,0 +1,41 @@
+[project]
+name = "debug-ic-fuzzer"
+version = "0.1.0"
+description = "Kotlin/Native Debug IC commit replay with baseline and sut"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{name = "Kevin", email = "kevin.dev@foxmail.com"}]
+dependencies = ["PyYAML>=6,<7", "pydantic>=2,<3", "macholib>=1.16.3,<2"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+format = ["ruff==0.17.3"]
+
+[project.scripts]
+debug-ic-fuzzer = "debug_ic_fuzzer:main"
+
+[project.urls]
+Repository = "https://github.com/vibingkevin/debug-ic-fuzzer"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["debug_ic_fuzzer"]
+packages = ["impl"]
+
+[tool.setuptools.data-files]
+"share/debug-ic-fuzzer" = ["capture.init.gradle"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 240
+
+[tool.ruff.format]
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false

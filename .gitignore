@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+runs/
+docs/*.delivery.json
+configs/*.tgz
+configs/*.tar.gz
+repos/
+run/
+.gradle-home/
+.konan/
+.ruff_cache/

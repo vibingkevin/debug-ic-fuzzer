@@ -1,0 +1,7 @@
+# Replay implementation, README-only, implementation, and restoration changes.
+repository: "https://github.com/vibingkevin/native-ic-sample.git"
+branch: "main"
+start_commit: "e571e536a43ff2564572f010c881e62c9e2f7dba"
+end_commit: "51931bd2626afa8166234dac197f1fa54e44228f"
+direction: forward
+task: ":app:linkDebugExecutableLinuxX64" # Linux x64.
