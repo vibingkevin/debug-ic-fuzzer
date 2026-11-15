@@ -1,9 +1,7 @@
-// Opt-in workaround verified with community Kotlin 2.4.21 and Xcode 27.0.
-// The underlying Apple ld-prime nondeterminism is reported to Apple as FB25525111.
+// workaround for stablizing 2 ld-prime issues. See issues/smallstub/ and issues/chkstk/.
 gradle.projectsEvaluated {
     if (gradle.parent != null) return
     def task = gradle.rootProject.tasks.getByPath(':app:shared:application:linkPodDebugFrameworkIosArm64')
-    // Resolve runtime helpers from compiler-rt first and avoid a second objc_msgSend GOT slot.
     task.toolOptions.freeCompilerArgs.addAll([
         '-Xoverride-konan-properties=linkerKonanFlags.ios_arm64=-lc++ -lobjc -framework Foundation -framework UIKit',
         '-linker-option', '-lSystem',

@@ -9,6 +9,7 @@ import subprocess
 import tarfile
 
 import yaml
+from tqdm import tqdm
 
 from impl import config
 from impl.build import build_project
@@ -44,6 +45,7 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path) -> in
         for variant in ("baseline", "sut"):
             create_detached_worktree(bare_repository, run_directory / variant, commit_ids[0])
         failed = False
+        progress = compiler_cleanup.enter_context(tqdm(total=len(commit_ids), desc="Commits", unit="commit", mininterval=0))
         for commit_index, commit_id in enumerate(commit_ids):
             # for each commit
             variant_results = {}
@@ -66,7 +68,7 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path) -> in
                     variant_results[variant] = build_result
                     (run_directory / f"{record_stem}.json").write_text(json.dumps(build_result, ensure_ascii=False, indent=2) + "\n")
                 failed |= build_result["exit_code"] != 0 or build_result["error"] is not None
-                print(f"{commit_index:04d} {commit_id[:12]} {variant}: exit={build_result['exit_code']} error={build_result['error']}", flush=True)
+                tqdm.write(f"{commit_index:04d} {commit_id[:12]} {variant}: exit={build_result['exit_code']} error={build_result['error']}")
             comparison = {"error": "Build or collection failed"}
             try:
                 if failed:
@@ -78,10 +80,12 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path) -> in
             except (ValueError, OSError) as error:
                 comparison = {"error": str(error)}
             (run_directory / f"{commit_index:04d}-{commit_id[:12]}-comparison.json").write_text(json.dumps(comparison, indent=2) + "\n")
-            print(f"{commit_index:04d} comparison: {comparison}", flush=True)
+            tqdm.write(f"{commit_index:04d} comparison: {comparison}")
             failed |= "error" in comparison or comparison.get("production_equal") is False
+            progress.update(1)
             if failed:
                 break
+        progress.close()
         write_run_summary(run_directory, bare_repository)
         print(run_directory, flush=True)
         return int(failed)

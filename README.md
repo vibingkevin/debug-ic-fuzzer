@@ -1,153 +1,94 @@
 # debug-ic-fuzzer
 
-Replay a commit range with baseline and sut, using the same absolute project path and separate worktrees and project/dependency caches; compiler system caches may be shared.
-Build and compare Linux products or iOS frameworks, and collect Native cache snapshots. No functional tests, cross-commit analysis, or automatic clean.
+debug-ic-fuzzer replays an inclusive commit range with a baseline compiler and a system-under-test compiler. It builds both variants from the same absolute project path, gives them independent worktrees and project/dependency caches, and compares the resulting Native products and selected cache units. The stdlib and platformlib caches are shared when both variants use the same Native home. The tool is intended for build repeatability and incremental-cache investigations, it does not run functional tests.
 
-Requires Python 3.12+, Git, and a JDK. Linux x64 requires `llvm-strip` on PATH (for example, install the `llvm` package on Ubuntu).
-iOS frameworks require an Apple Silicon Mac with Xcode selected by `xcode-select`; comparison uses `xcrun strip`, `codesign`, and the installed `macholib` dependency.
+## Prerequisites
 
-```sh
+Supported hosts: Apple Silicon macOS and Linux x64.
+
+Runtime dependencies:
+
+- Python 3.12 or newer, Git, and a JDK compatible with the project being built.
+- Linux: `llvm-strip` for ELF production-byte comparisons (provided by the `llvm` package on Ubuntu).
+- macOS: Xcode selected with `xcode-select`, providing the tools used for Mach-O stripping and signature removal.
+
+Additional test dependencies:
+
+- Linux: a C compiler available as `cc` and `objcopy`, used to create and modify ELF test fixtures (provided by `build-essential` and `binutils` on Ubuntu).
+- macOS: the selected Xcode’s `clang` and `libtool`, used to create framework test fixtures.
+
+## Installation and first run
+
+Create a virtual environment, install the project, and invoke the console entry point with one compiler YAML and one project YAML:
+
+~~~sh
 python3 -m venv .venv
-.venv/bin/pip install -e '.[test]'
-.venv/bin/debug-ic-fuzzer --compilers configs/compilers.yaml --project configs/project.yaml
-```
+.venv/bin/pip install -e .
+.venv/bin/debug-ic-fuzzer \
+  --compilers configs/compilers-2.4.21.yaml \
+  --project configs/ic-sample-ios.yaml
+~~~
 
-For iOS use `--project configs/ic-sample-ios.yaml` and a compiler configuration with macOS distributions, or omit both Native homes to let KGP download them.
-The manually triggered `Animeko` GitHub Actions workflow replays `configs/animeko.yaml` with `configs/compilers.yaml` on macOS ARM.
-For the verified Xcode 27 device-link reproducibility issue and the project-configured workaround, see [iOS repeatability](docs/ios-repeatability.md).
+For iOS, use a compiler configuration containing macOS Native distributions and an iOS project configuration such as configs/ic-sample-ios.yaml. If a compiler YAML omits kotlin_native_home, KGP downloads the matching Native distribution into the tool-local .konan directory. The manually triggered Animeko workflow uses configs/openani-animeko.yaml on a macOS ARM runner.
 
-Compiler and project configurations are separate YAML files in `configs/`.
-Relative CLI configuration paths resolve from `PROJECT_ROOT`, independent of the shell working directory.
-`start_commit` must lie on the selected branch's main line, with start at or before `end_commit`.
-Set `end_commit: latest` to resolve the current tip of the selected branch after fetching it; this is useful for
-repositories that are still maintained on a 2.4.x branch.
-Both endpoints are included. `forward` replays oldest to newest; `reverse` replays the same range newest to oldest.
-Order follows commit ancestry, not timestamps; commits within merged side branches are not replayed individually.
-Equal endpoints build one commit. Invalid endpoints or direction stop the run before compilation.
-A Native home directory must be absolute. A `.tgz` or `.tar.gz` path may be relative to the compiler YAML.
-`kotlin_native_home` may also be a list of archives; exactly one filename must contain the current host token
-(`linux-x86_64` on Linux x64 or `macos-aarch64` on Apple Silicon macOS), and only that archive is extracted.
-archives are extracted into fresh `/tmp` directories for each run and removed when the run ends.
-Without a home, the tool overrides KGP and lets it download the matching Native distribution into the tool-local `.konan` directory.
-The tool does not pass `kotlin.native.version`. Both variants may use the same Native home and system cache.
-`gradle_args` are passed through, replacing `{config_dir}` with the project YAML directory.
+## Configuration
 
-Each run:
+Compiler and project settings live in separate YAML files. The following single example shows the accepted fields and their meaning; the File: comments mark where the two parts belong and are explanatory comments, not extra schema:
 
-1. Clone or update `repos/<repository-name>.git`. Different URLs with the same repository name use separate remotes; matching URLs reuse the existing remote.
-2. Create `run/<compiler-config>-<project-config>-<timestamp>/` and two independent worktrees at the first commit in replay order.
-   The timestamp uses `YYYYMMDD-HHMMSS`; an existing directory is an error.
-3. Move baseline to `project`, check out the commit, run Gradle, parse the log, validate, collect caches and product hashes, and write its JSON.
-   Only then move it back; failures also restore the worktree.
-4. Repeat for sut, then compare the collected records before advancing to the next commit.
-   Retain both worktrees' build outputs and caches.
-   Write logs directly to files and read them only after the build finishes.
+~~~yaml
+# File: configs/compilers-2.4.21.yaml
+compilers:
+  # Both entries are required. The fuzzer builds each commit with both variants.
+  baseline:
+    kotlin_version: "2.4.21"       # Required compiler version passed to KGP.
+    # Optional absolute Native home or a path relative to this compiler YAML.
+    # A .tgz/.tar.gz archive is extracted into a fresh /tmp directory per run.
+    kotlin_native_home: "../compilers/kotlin-native-prebuilt-linux-x86_64-2.4.21.tar.gz"
+  sut:
+    kotlin_version: "2.4.21"
+    kotlin_native_home: "../compilers/kotlin-native-prebuilt-linux-x86_64-2.4.21.tar.gz"
 
-Each commit writes two JSON records and two Gradle logs directly in the run directory, named
-`0000-<commit12>-baseline.json`, `0000-<commit12>-baseline.gradle.log`, and the corresponding sut files.
-The zero-based index follows replay order. Gradle uses its default log level; KGP reports compiler arguments at warning level.
-Logs include konanc arguments, without normalization or deduplication.
-A failed build or result check still saves the record and allows the other variant of that commit to run, then stops replay.
-Records contain the command, compiler path, duration, exit code, final link details, `cache_files`, and `artifacts`.
-Each commit also writes `0000-<commit12>-comparison.json` with `strict_equal` and `production_equal`.
-If both links are UP-TO-DATE, both equality fields are null with a `skipped` reason; replay continues.
-If only one link is UP-TO-DATE, save the executed side's products, record an execution-state error, and stop.
-Production differences or collection errors stop replay; differences only in the unstripped product do not.
-Missing files are differences. Compiler caches are collected, not compared during replay.
+# File: configs/project.yaml
+repository: "https://github.com/example/project.git" # HTTPS, SSH, or git@ URL.
+branch: "main"                         # Must contain both commit endpoints.
+start_commit: "<oldest-commit>"        # Inclusive; use a full commit ID.
+end_commit: "<newest-commit>"          # Inclusive; latest resolves the fetched branch tip.
+direction: forward                     # forward or reverse replay order.
+task: ":app:linkDebugExecutableLinuxX64" # Final Native link task to execute.
+gradle_args:                             # Optional arguments forwarded to Gradle.
+  - "-Pfeature=true"
+~~~
 
-After replay finishes or stops on a failed pair, `impl/summary.py` writes `summary.csv` from the JSON records and Git history.
-Columns: `commit`, `changed_files`, `added_lines`, `deleted_lines`, `strict_equal`, `production_equal`,
-`baseline_seconds`, `sut_seconds`, `baseline_rebuilt_caches`, `sut_rebuilt_caches`.
-Changes are relative to the commit's first parent (empty tree for the initial commit), including in reverse replay.
-Binary files count as changed files but contribute no lines; renames count as deletion plus addition.
-Rebuilt counts are unique archive paths in the compiler report, recorded as `rebuilt_cache_count` before collection.
-UP-TO-DATE counts as zero rebuilds; unknown counts and unperformed comparisons are blank. Durations are seconds.
+Relative CLI paths are resolved from PROJECT_ROOT, not from the shell's current directory. A compiler home supplied as a directory must be absolute; an archive may be relative to the compiler YAML. A kotlin_native_home list is also accepted when it contains archives for multiple hosts, but exactly one filename must contain the current host token (linux-x86_64 or macos-aarch64). The project repository must be reachable by Git, task must be a Gradle task path, and both endpoints must be on the selected branch's main line. Equal endpoints build one commit. forward follows ancestry from oldest to newest, while reverse follows the same range in the opposite order; merge side branches are not replayed independently.
 
-Collection and comparison:
+gradle_args are passed through unchanged after replacing {config_dir} with the directory containing the project YAML. The tool does not pass kotlin.native.version. When both variants resolve to the same Native home, they share its stdlib and platformlib caches.
 
-- `cache_files`: collect only cache units listed in the current `-Xdump-built-caches-to` report.
-  Each reported `<cache-unit>/bin/*.a` selects its containing cache-unit directory, including metadata and IR; duplicate directories are scanned once.
-  For per-file caches this selects only the rebuilt file's unit, not its unchanged siblings; monolithic caches select the whole library unit.
-  An empty report records `[]`; UP-TO-DATE records null. Missing reports after failed builds do not trigger a fallback scan.
-  Record `path`, `md5`, and `mtime_ns`. Known paths use `project/` or `native-home/` prefixes; other reported paths remain absolute.
-- Cache `metadata.properties` and `bitcode_deps` are saved after converting line endings to LF and stripping surrounding whitespace.
-  Remove `compilerFingerprint` from metadata before hashing and saving. Cache `.a`, IR, and other files are hashed as bytes but not saved.
-- `artifacts`: inspect the final product directory (`.kexe`, `.so` plus its generated `.h`, or a flat iOS `.framework` with its sibling `.dSYM`).
-  Each file records `path`, raw `md5`, `production_md5`, and `mtime_ns`.
-  The production view strips ELF symbols/debug information and removes `.note.gnu.build-id`; headers use normalized text.
-  Other output files use their original bytes. The original files are never modified.
-- Dynamic framework binaries use a temporary copy stripped of debug/local symbols, code signatures, and UUID values.
-  Static frameworks strip debug information and normalize archive timestamps, preserving symbols and relocations needed for linking.
-  Framework headers, modulemaps, Info.plist, and resources participate in production comparison.
-  dSYM files have null `production_md5` and participate only in strict comparison, including when present on only one side.
-  This supports individual iOS frameworks, not XCFramework containers or versioned macOS framework symlinks.
-- Compare file sets and raw MD5s for strict equality, and production MD5s for production equality.
-  Save both variants' original product contents only on differences or errors. Only this save step translates paths back to baseline/sut.
-  Equal products retain both hashes without saving contents. Temporary production views are always deleted.
-- Saved contents are deduplicated immediately in `store/<filename>/<filename>-<md5>` shared by the run.
-  Records do not repeat the derived store path. Cache archive contents are not retained for historical inspection; replay to reproduce them.
+## Replay and outputs
 
-Strip errors are recorded and stop replay. A production difference is a comparison failure, not proof of a compiler bug.
-Sources and outputs remain in their worktrees. `repos/` and `run/` are ignored by Git.
+For each run the tool updates repos/<repository-name>.git, creates a timestamped directory under run/, and prepares two independent worktrees. It moves the baseline worktree to project, checks out the commit, runs Gradle, parses the completed log, validates the final link, and records the result before doing the same for the sut worktree. Both worktrees retain their build outputs and caches. The timestamp format is YYYYMMDD-HHMMSS, and an existing run directory is an error.
 
-The tool sets `GRADLE_USER_HOME=<tool-root>/.gradle-home` and passes the matching `--gradle-user-home`, so both the Wrapper and Gradle use the shared directory instead of the inherited home.
-All projects, runs, and both compiler variants share this directory and reuse downloaded dependencies.
-Gradle receives `KONAN_DATA_DIR=<tool-root>/.konan`, overriding the inherited environment without changing the parent process.
-The final link uses `-Xtemporary-files-dir=<run>/project/.tmp`, cleared before execution and retained afterward for inspection.
-Gradle also receives `ZERO_AR_DATE=1` to remove object timestamps from Mach-O debug maps and archive headers.
-The init script sets `-Xauto-cache-dir` to `<run>/project/.auto-cache`.
-Each worktree retains its own dependency cache; moving it to `project` gives both variants the same build path. The project IC path comes from `-Xic-cache-dir`, including module-local build directories.
-The compiler's `klib/cache` remains shared when Native homes match; existing system caches are not cleared.
-The tool root is `PROJECT_ROOT` in `impl/config.py`, resolved from that Python file; `.gradle-home/` and `.konan/` are ignored by Git.
-Build Cache and Configuration Cache follow project settings; only the final Native link is excluded from Build Cache reads and writes.
-The capture action supports Configuration Cache and does not disable UP-TO-DATE checks.
-UP-TO-DATE links retain the command, task state, duration, and log, with null `link`, `cache_files`, and `artifacts`.
-They do not collect existing outputs or reuse metadata from previous commits.
-Execution-state mismatch is a test failure requiring investigation, not proof of a compiler bug.
+Each replayed commit produces two JSON records and two Gradle logs named 0000-<commit12>-baseline.json, 0000-<commit12>-baseline.gradle.log, and the corresponding sut files. The records include the command, compiler path, duration, exit code, final-link details, selected cache files, and artifact hashes. A third 0000-<commit12>-comparison.json records strict_equal and production_equal. If both links are UP-TO-DATE, the equality fields are null with a skipped reason and replay continues. If only one side is UP-TO-DATE, the tool records an execution-state error and stops. A production difference, missing file, strip failure, or collection error stops the replay; a difference only in the unstripped product does not.
 
-`debug_ic_fuzzer.py` coordinates both variants. `impl/config.py` handles configuration and distributions;
-`impl/repository.py` prepares repositories; `impl/build.py` runs Gradle and parses the completed log once.
-`impl/validation.py` checks link results.
-`impl/collection.py` reads the current built-cache report and snapshots its reported cache directories.
-`impl/comparison.py` collects product hashes and compares records.
-Both collectors run inside `project`; each build JSON is written once before the worktree moves back.
-`build_project` groups project directory/config, compiler config/home, and the log stem.
-The replay loop expands config placeholders and adds commit/variant fields; run paths come from the project directory's parent.
-`impl/elf.py` and `impl/macho.py` each expose `is_binary` and `compute_production_md5`.
-`impl/comparison.py` dispatches by binary format; Mach-O handling also covers static framework archives.
-`capture.init.gradle` overrides KGP, excludes the final link from Build Cache, reports the actual compiler path, and requests the built-cache archive list.
+After replay, impl/summary.py writes summary.csv from the records and Git history. It includes the commit, changed-file counts, line counts, equality results, durations, and rebuilt-cache counts. Rebuilt counts are unique archive paths reported by the compiler; UP-TO-DATE counts as zero, while unknown or unperformed values remain blank.
 
-### Inlining options
+## Cache and artifact comparison
 
-The demo uses default inlining behavior; scenario commits do not change inlining options.
-Kotlin/Native 2.4.21 supports these values for `-Xklib-ir-inliner=`:
+The collector reads only the cache units listed in the current -Xdump-built-caches-to report. A reported <cache-unit>/bin/*.a selects the containing unit, including metadata and IR; per-file caches select only the reported file unit, while monolithic caches select the whole library. An empty report becomes [], UP-TO-DATE becomes null, and a missing report after a failed build does not trigger a fallback scan. Cache metadata and dependency lists are normalized before hashing, with compilerFingerprint removed from metadata; binary cache contents are hashed but not retained.
 
-| Value | Behavior while producing KLIBs |
-|---|---|
-| `default` | Choose the default mode for the language version |
-| `intra-module` | Inline functions from the current module early |
-| `full` | Also inline functions from dependencies early; 2.4.21 marks the KLIB as pre-release |
-| `disabled` | Disable early inlining at this stage; later Native inlining can still occur |
+The artifact collector supports .kexe, .so plus its generated header, and a flat iOS .framework with its sibling .dSYM. Strict comparison uses raw MD5 values for every file. Production comparison uses a temporary stripped view: ELF build IDs and debug information are removed, Mach-O symbols, signatures, and UUIDs are removed, and static archive timestamps are normalized. Headers, module maps, Info.plist, and resources remain part of the production view. dSYM files participate only in strict comparison. Differences and failed records retain the original product contents in the shared store/ directory; equal products retain hashes only.
 
-Kotlin 2.4 defaults to intra-module early inlining; 2.5 extends this to cross-module inlining.
-See the [official release notes](https://kotlinlang.org/docs/whatsnew-eap.html#consistent-cross-module-function-inlining-during-klib-compilation).
-These are compiler options, not Gradle arguments. This tool does not set inlining options.
+The tool sets an isolated GRADLE_USER_HOME and KONAN_DATA_DIR under its root, uses ZERO_AR_DATE=1, gives each run a temporary-files directory, and sets project IC and automatic-cache directories through the init script. The stdlib and platformlib caches in `<Native home>/klib/cache` are shared when both variants resolve to the same home; -Xauto-cache-dir does not redirect these caches. Archive-based Native homes are extracted separately for each variant, so their stdlib and platformlib caches are independent. Existing stdlib and platformlib caches are not cleared. Build Cache and Configuration Cache follow the project settings, while the final Native link is excluded from Build Cache reads and writes. UP-TO-DATE links retain their command, task state, duration, and log but do not collect existing outputs.
 
-Linux tests also require `cc` and `objcopy` for small ELF fixtures. macOS tests build dynamic/static framework fixtures with Xcode tools; tests for the other platform are skipped.
+## Inlining options
 
-```sh
-.venv/bin/python -m pytest -q
-```
+The default scenarios do not change Kotlin/Native inlining options. Kotlin/Native 2.4.21 accepts default, intra-module, full, and disabled for -Xklib-ir-inliner=. Kotlin 2.4 defaults to intra-module early inlining, while 2.5 extends the default to cross-module inlining. These are compiler options, not Gradle arguments, and this tool does not set them. See the official release notes for the language-version behavior: https://kotlinlang.org/docs/whatsnew-eap.html#consistent-cross-module-function-inlining-during-klib-compilation.
 
-### Formatting
+Known macOS linker and Kotlin/Native debug-information reproductions are kept under issues/:
 
-With a Python 3.12+ environment active, the same commands work on Linux, macOS, and Windows:
+- issues/smallstub/ covers Objective-C selector-stub GOT ordering.
+- issues/chkstk/ covers ___chkstk_darwin provider selection.
+- issues/inline-dwarf/ covers cache-scope-dependent inline DWARF file entries.
 
-```sh
-python -m pip install -e ".[test,format]"
-python -m ruff format .
-```
+## Tests and formatting
 
-Use `python -m ruff format --check .` to check without changing files.
-The pinned Ruff version reads `pyproject.toml`: 240-column lines and no forced wrapping from trailing commas.
-Formatting needs no editor extension.
+With a Python 3.12+ environment active, run the test suite with .venv/bin/python -m pytest -q. Formatting dependencies can be installed with python -m pip install -e ".[test,format]"; use python -m ruff format . to format or python -m ruff format --check . to check without changing files. The pinned Ruff configuration allows 240-column lines and does not force-wrap trailing-comma expressions.
