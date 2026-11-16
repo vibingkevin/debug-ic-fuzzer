@@ -1,7 +1,6 @@
-# Replay from the selected starting commit through the latest branch commit.
 repository: "https://github.com/vibingkevin/native-ic-sample.git"
 branch: "main"
 start_commit: "3277caf8723970221e9a75df0898b76038509653"
 end_commit: "latest"
 direction: forward
-task: ":app:linkDebugExecutableLinuxX64" # Linux x64.
+task: ":app:linkDebugExecutableLinuxX64"
