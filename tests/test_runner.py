@@ -47,16 +47,15 @@ def test_home_paths_and_fresh_archives(tmp_path, monkeypatch, extension):
     assert not first.exists() and not second.exists()
 
 
-@pytest.mark.parametrize(
-    ("system", "machine", "host"),
-    [("Linux", "x86_64", "linux-x86_64"), ("Darwin", "arm64", "macos-aarch64")],
-)
+@pytest.mark.parametrize(("system", "machine", "host"), [("Linux", "x86_64", "linux-x86_64"), ("Darwin", "arm64", "macos-aarch64"), ("Darwin", "x86_64", "macos-x86_64")])
 def test_archive_list_selects_current_host(tmp_path, monkeypatch, system, machine, host):
-    """Select exactly the archive whose filename identifies the current host."""
+    """Resolve the official download path and select only the current host archive."""
     monkeypatch.setattr("impl.config.platform.system", lambda: system)
     monkeypatch.setattr("impl.config.platform.machine", lambda: machine)
+    with ExitStack() as stack:
+        assert resolve_native_home(Compiler(kotlin_version="2.4.21"), tmp_path, stack) == tmp_path / f".konan/kotlin-native-prebuilt-{host}-2.4.21"
     archives = []
-    for archive_host in ("linux-x86_64", "macos-aarch64"):
+    for archive_host in ("linux-x86_64", "macos-aarch64", "macos-x86_64"):
         archive = tmp_path / f"kotlin-native-prebuilt-{archive_host}.tar.gz"
         with tarfile.open(archive, "w:gz") as tar:
             entry = tarfile.TarInfo("dist/bin/konanc")
