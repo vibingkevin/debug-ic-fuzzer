@@ -1,0 +1,16 @@
+// Older FeedFlow commits use SKIE releases that do not support Kotlin 2.4.21.
+gradle.settingsEvaluated { settings ->
+    settings.dependencyResolutionManagement.versionCatalogs.configureEach { it.version('skie', '0.10.16') }
+    settings.pluginManagement.resolutionStrategy.eachPlugin {
+        if (requested.id.id == 'co.touchlab.skie') useVersion('0.10.16')
+    }
+}
+
+// Requires a Swift toolchain supporting -prefix-map-sourceinfo (Swift 6.5 snapshots).
+gradle.beforeProject { project ->
+    project.plugins.withId('co.touchlab.skie') {
+        def build = project.extensions.getByName('skie').build
+        build.noClangModuleBreadcrumbsInStaticFrameworks.set(true)
+        build.freeSwiftCompilerArgs.addAll(['-Xfrontend', '-prefix-map-sourceinfo'])
+    }
+}
