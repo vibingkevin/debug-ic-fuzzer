@@ -32,7 +32,7 @@ jobs:
             os: ubuntu-24.04
             project: configs/ic-sample-linux.yaml
           - name: macos-arm64
-            os: macos-15
+            os: macos-latest
             project: configs/ic-sample-ios.yaml
           - name: macos-x64
             os: macos-15-intel

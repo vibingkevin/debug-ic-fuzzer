@@ -13,7 +13,7 @@ concurrency:
 jobs:
   replay:
     name: ${{ matrix.project }}-${{ matrix.start_at }}${{ matrix.guard && '-guard' || '' }}
-    runs-on: macos-15
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
