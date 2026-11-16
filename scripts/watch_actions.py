@@ -65,6 +65,9 @@ def poll(repo, branch, output, previous, reported):
             key = (run["id"], run["run_attempt"], job["id"])
             if not failed(job) or key in reported:
                 continue
+            if job["conclusion"] == "cancelled" and not job.get("steps"):
+                reported.add(key)
+                continue
             steps = ", ".join(step["name"] for step in job.get("steps", []) if step["conclusion"] not in ACCEPTED | {None})
             print(f"FAILED: {job['name']} ({job['conclusion']}) {steps}\n{job['html_url']}", flush=True)
             try:
