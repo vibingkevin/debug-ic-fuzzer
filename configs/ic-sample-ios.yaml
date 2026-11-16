@@ -4,4 +4,4 @@ branch: "main"
 start_commit: "3277caf8723970221e9a75df0898b76038509653"
 end_commit: "latest"
 direction: forward
-task: ":app:linkDebugFrameworkIosSimulatorArm64" # Apple Silicon Mac with Xcode.
+task: ":app:linkDebugFrameworkIosArm64" # Cacheable device target on Intel and Apple Silicon Macs.

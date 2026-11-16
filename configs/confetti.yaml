@@ -1,0 +1,7 @@
+repository: "https://github.com/joreilly/Confetti.git"
+branch: "main"
+start_commit: "4b7516363660074f3da485f335af197938192532"
+end_commit: "latest"
+direction: forward
+task: ":shared:linkDebugFrameworkIosSimulatorArm64"
+gradle_args: []

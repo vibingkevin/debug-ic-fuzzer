@@ -63,9 +63,9 @@ def resolve_native_home(compiler_config: Compiler, compiler_config_directory: Pa
         The distribution directory, or the expected KGP download path when no home
         is configured. This function does not download the distribution itself.
     """
-    host = {("Darwin", "arm64"): "macos-aarch64", ("Linux", "x86_64"): "linux-x86_64"}.get((platform.system(), platform.machine()))
+    host = {("Darwin", "arm64"): "macos-aarch64", ("Darwin", "x86_64"): "macos-x86_64", ("Linux", "x86_64"): "linux-x86_64"}.get((platform.system(), platform.machine()))
     if host is None:
-        raise ValueError("Only Apple Silicon Mac and Linux x64 are supported")
+        raise ValueError("Only macOS arm64/x64 and Linux x64 are supported")
     native_home = compiler_config.kotlin_native_home
     if native_home is None:
         # Match the tool-local KONAN_DATA_DIR passed to Gradle; KGP performs the download.
