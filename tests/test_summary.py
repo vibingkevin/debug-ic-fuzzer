@@ -49,6 +49,8 @@ def test_summary_commit_changes_and_missing_values(tmp_path):
     with summary_path.open(newline="") as summary:
         rows = list(csv.DictReader(summary))
     assert [row["commit"] for row in rows] == [merged, renamed, initial]
+    assert "both_failed" not in rows[0]
+    assert [row["note"] for row in rows] == ["", "Both UP-TO-DATE", ""]
     assert (rows[0]["strict_equal"], rows[0]["production_equal"]) == ("False", "True")
     assert (rows[0]["baseline_seconds"], rows[0]["sut_seconds"]) == ("1.25", "2.5")
     assert rows[0]["baseline_rebuilt_caches"] == rows[0]["sut_rebuilt_caches"] == "3"
