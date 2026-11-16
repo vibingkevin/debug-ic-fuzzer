@@ -107,6 +107,10 @@ Absolute CLI and archive paths are used directly. The tool leaves the project’
 - [`___chkstk_darwin` provider selection](issues/chkstk/): `ld-prime` chooses between system and compiler-rt implementations.
 - [Inline DWARF source ownership](issues/inline-dwarf/): Kotlin/Native source-location errors, fixed on upstream `master`.
 
+## Projects not included
+
+[SimpMusic](https://github.com/maxrave-dev/SimpMusic): the upstream [project guide](https://github.com/maxrave-dev/SimpMusic/blob/f78a4fd6da9680e5771f4763194d2895d26914fd/CLAUDE.md) lists iOS as future work. Our [iOS sublibrary build attempts failed](https://github.com/vibingkevin/debug-ic-fuzzer-validation/actions/runs/43736378961/job/132879879034), so the project is not included in iOS replay tests.
+
 ## Development
 
 ```sh
