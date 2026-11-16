@@ -61,18 +61,37 @@ jobs:
       - name: Install ELF tools
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y llvm
-      - name: Restore dependency downloads
-        uses: actions/cache@v5
+      - name: Restore reusable build caches
+        id: build-cache
+        uses: actions/cache/restore@v5
         with:
           path: |
-            .gradle-home/caches/modules-2
+            .gradle-home/caches
             .gradle-home/wrapper/dists
             .konan/dependencies
-          key: ic-dependencies-${{ matrix.name }}-${{ hashFiles('configs/compilers*.yaml', 'configs/ic-sample-*.yaml') }}
+            !.gradle-home/caches/**/.auto-cache/**
+            !.gradle-home/caches/**/kotlin-native-ic-cache/**
+            !.gradle-home/caches/**/*.lock
+          key: ic-dependencies-v2-${{ matrix.name }}-${{ hashFiles('configs/compilers*.yaml', 'configs/ic-sample-*.yaml') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ic-dependencies-v2-${{ matrix.name }}-${{ hashFiles('configs/compilers*.yaml', 'configs/ic-sample-*.yaml') }}-
+            ic-dependencies-v2-${{ matrix.name }}-
       - name: Run unit tests
         run: .venv/bin/python -m pytest -q
       - name: Replay IC sample
-        run: .venv/bin/python debug_ic_fuzzer.py --compilers ${{ matrix.compilers }} --project ${{ matrix.project }}
+        run: .venv/bin/python -u debug_ic_fuzzer.py --compilers ${{ matrix.compilers }} --project ${{ matrix.project }}
+      - name: Save reusable build caches
+        if: ${{ always() && steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            .gradle-home/caches
+            .gradle-home/wrapper/dists
+            .konan/dependencies
+            !.gradle-home/caches/**/.auto-cache/**
+            !.gradle-home/caches/**/kotlin-native-ic-cache/**
+            !.gradle-home/caches/**/*.lock
+          key: ${{ steps.build-cache.outputs.cache-primary-key }}
       - name: Upload replay results
         if: always()
         uses: actions/upload-artifact@v6

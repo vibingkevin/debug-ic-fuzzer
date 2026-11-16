@@ -60,15 +60,22 @@ jobs:
           archive=kotlin-native-prebuilt-macos-aarch64-2.4.21-9267.tar.gz
           gh release download compiler-2.4.21-9267 --repo vibingkevin/debug-ic-fuzzer-validation --pattern "$archive" --dir compilers --clobber
           printf '%s  %s\n' c59d73272d932b865f48d8187e6cca40694dfdbd30e46a776056680fd339bf2e "compilers/$archive" | shasum -a 256 -c -
-      - name: Restore dependency downloads
+      - name: Restore reusable build caches
+        id: build-cache
         if: ${{ !matrix.guard }}
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: |
-            .gradle-home/caches/modules-2
+            .gradle-home/caches
             .gradle-home/wrapper/dists
             .konan/dependencies
-          key: music-assistant-dependencies-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/music-assistant.yaml') }}
+            !.gradle-home/caches/**/.auto-cache/**
+            !.gradle-home/caches/**/kotlin-native-ic-cache/**
+            !.gradle-home/caches/**/*.lock
+          key: music-assistant-dependencies-v2-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/music-assistant.yaml') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            music-assistant-dependencies-v2-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/music-assistant.yaml') }}-
+            music-assistant-dependencies-v2-macos-arm64-
       - name: Replay page
         shell: bash
         run: |
@@ -87,6 +94,18 @@ jobs:
             exit 1
           fi
           "${replay[@]}"
+      - name: Save reusable build caches
+        if: ${{ always() && steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            .gradle-home/caches
+            .gradle-home/wrapper/dists
+            .konan/dependencies
+            !.gradle-home/caches/**/.auto-cache/**
+            !.gradle-home/caches/**/kotlin-native-ic-cache/**
+            !.gradle-home/caches/**/*.lock
+          key: ${{ steps.build-cache.outputs.cache-primary-key }}
       - name: Upload replay results
         if: always()
         uses: actions/upload-artifact@v6

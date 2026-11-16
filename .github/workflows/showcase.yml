@@ -75,15 +75,22 @@ jobs:
             --output "$archive"
           printf '%s  %s\n' 13409e99956a74aaee1856c56889c211116fbc8be2bcbe373986ec9e10f536fc "$archive" | shasum -a 256 -c -
           echo "SHOWCASE_OPENCV_ARCHIVE=$archive" >> "$GITHUB_ENV"
-      - name: Restore dependency downloads
+      - name: Restore reusable build caches
+        id: build-cache
         if: ${{ !matrix.guard }}
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: |
-            .gradle-home/caches/modules-2
+            .gradle-home/caches
             .gradle-home/wrapper/dists
             .konan/dependencies
-          key: showcase-dependencies-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/showcase-app.yaml', 'configs/showcase-*.init.gradle') }}
+            !.gradle-home/caches/**/.auto-cache/**
+            !.gradle-home/caches/**/kotlin-native-ic-cache/**
+            !.gradle-home/caches/**/*.lock
+          key: showcase-dependencies-v2-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/showcase-app.yaml', 'configs/showcase-*.init.gradle') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            showcase-dependencies-v2-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/showcase-app.yaml', 'configs/showcase-*.init.gradle') }}-
+            showcase-dependencies-v2-macos-arm64-
       - name: Replay page
         shell: bash
         run: |
@@ -102,6 +109,18 @@ jobs:
             exit 1
           fi
           "${replay[@]}"
+      - name: Save reusable build caches
+        if: ${{ always() && steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            .gradle-home/caches
+            .gradle-home/wrapper/dists
+            .konan/dependencies
+            !.gradle-home/caches/**/.auto-cache/**
+            !.gradle-home/caches/**/kotlin-native-ic-cache/**
+            !.gradle-home/caches/**/*.lock
+          key: ${{ steps.build-cache.outputs.cache-primary-key }}
       - name: Upload replay results
         if: always()
         uses: actions/upload-artifact@v6
