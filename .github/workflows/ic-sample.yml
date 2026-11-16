@@ -31,9 +31,15 @@ jobs:
           - name: linux-x64
             os: ubuntu-24.04
             project: configs/ic-sample-linux.yaml
+            compilers: configs/compilers-2.4.21-9267.yaml
           - name: macos-arm64
             os: macos-15
             project: configs/ic-sample-ios.yaml
+            compilers: configs/compilers-2.4.21-9267.yaml
+          - name: macos-x64
+            os: macos-15-intel
+            project: configs/ic-sample-ios-arm64.yaml
+            compilers: configs/compilers-2.4.21.yaml
     timeout-minutes: 45
     env:
       PYTHONDONTWRITEBYTECODE: '1'
@@ -66,7 +72,7 @@ jobs:
       - name: Run unit tests
         run: .venv/bin/python -m pytest -q
       - name: Replay IC sample
-        run: .venv/bin/python debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project ${{ matrix.project }}
+        run: .venv/bin/python debug_ic_fuzzer.py --compilers ${{ matrix.compilers }} --project ${{ matrix.project }}
       - name: Upload replay results
         if: always()
         uses: actions/upload-artifact@v6
