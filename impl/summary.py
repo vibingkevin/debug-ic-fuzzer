@@ -29,7 +29,7 @@ def write_run_summary(run_directory: Path, bare_repository: Path) -> Path:
     and reported archive counts. Preserve replay order and leave unknown values blank.
     Return the CSV path; do not inspect caches, outputs, or overwritten compiler reports.
     """
-    columns = ["commit", "changed_files", "added_lines", "deleted_lines", "strict_equal", "production_equal", "baseline_seconds", "sut_seconds", "baseline_rebuilt_caches", "sut_rebuilt_caches"]
+    columns = ["commit", "changed_files", "added_lines", "deleted_lines", "strict_equal", "production_equal", "both_failed", "baseline_seconds", "sut_seconds", "baseline_rebuilt_caches", "sut_rebuilt_caches"]
     summary_path = run_directory / "summary.csv"
     with summary_path.open("w", newline="", encoding="utf-8") as output:
         writer = csv.DictWriter(output, fieldnames=columns)
@@ -39,7 +39,9 @@ def write_run_summary(run_directory: Path, bare_repository: Path) -> Path:
             comparison = json.loads(comparison_path.read_text())
             variants = {variant: json.loads((run_directory / f"{record_stem}-{variant}.json").read_text()) for variant in ("baseline", "sut")}
             commit_id = variants["baseline"]["commit"]
-            row = dict(commit=commit_id, **read_commit_change_stats(bare_repository, commit_id), strict_equal=comparison.get("strict_equal"), production_equal=comparison.get("production_equal"))
+            row = dict(
+                commit=commit_id, **read_commit_change_stats(bare_repository, commit_id), strict_equal=comparison.get("strict_equal"), production_equal=comparison.get("production_equal"), both_failed=comparison.get("both_failed", False)
+            )
             for variant, result in variants.items():
                 row[f"{variant}_seconds"] = result.get("seconds")
                 row[f"{variant}_rebuilt_caches"] = 0 if result["task_state"] == "UP-TO-DATE" else result.get("rebuilt_cache_count")

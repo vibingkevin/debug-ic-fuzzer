@@ -35,12 +35,13 @@ There are two equality checks. `strict_equal` compares original product bytes, i
 | Both checks are true | Continue to the next commit. |
 | Strict differs, production matches | Save the original products and continue; inspect the debug or identity difference separately. |
 | Production differs | Save the original products and stop after this commit pair. |
+| Both builds return nonzero exit codes | Record both equality checks as true and `both_failed=true`, then continue. Exit codes and failure reasons need not match; products are not compared. |
 | Both links are `UP-TO-DATE` | Skip comparison and continue. Equality fields are blank in CSV and `null` in JSON. |
-| Only one link is `UP-TO-DATE`, or a build/collection fails | Record the error and stop after this commit pair. |
+| Only one build fails, only one link is `UP-TO-DATE`, or collection fails after a successful build | Record the error and stop after this commit pair. |
 
 For a failing or differing row, open its `0000-<commit12>-comparison.json` first, then the corresponding `-baseline.json`, `-sut.json`, and `.gradle.log` files. JSON records contain the commands, compiler paths, errors, artifact hashes, and cache snapshots. Saved product contents are under that run’s `store/` directory.
 
-A completed replay returns exit code 0; a failed comparison or recorded build error returns 1. An exception that aborts preparation or replay returns 2 and bypasses summary generation. See [Replay details](docs/replay.md) for comparison rules, cache scope, and evidence retention.
+A replay whose commit pairs are all accepted returns exit code 0, including pairs where both builds fail. A failed comparison or one-sided build failure returns 1. An exception that aborts preparation or replay returns 2 and bypasses summary generation. See [Replay details](docs/replay.md) for comparison rules, cache scope, and evidence retention.
 
 ## Replay your project
 

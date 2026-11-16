@@ -28,7 +28,7 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path) -> in
         project_config_path: Project configuration path, absolute or relative to PROJECT_ROOT.
 
     Returns:
-        0 if all pairs pass or both links are UP-TO-DATE, otherwise 1. Writes results and
+        0 if all pairs match, both builds fail, or both links are UP-TO-DATE, otherwise 1. Writes results and
         worktrees under PROJECT_ROOT; configuration/setup errors propagate.
     """
     compilers_config_path = (config.PROJECT_ROOT / compilers_config_path).resolve()
@@ -67,12 +67,12 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path) -> in
                         build_result["error"] = build_result["error"] or str(error)
                     variant_results[variant] = build_result
                     (run_directory / f"{record_stem}.json").write_text(json.dumps(build_result, ensure_ascii=False, indent=2) + "\n")
-                failed |= build_result["exit_code"] != 0 or build_result["error"] is not None
                 tqdm.write(f"{commit_index:04d} {commit_id[:12]} {variant}: exit={build_result['exit_code']} error={build_result['error']}")
             comparison = {"error": "Build or collection failed"}
             try:
-                if failed:
-                    # save build product only if build failed
+                if all(result["exit_code"] != 0 for result in variant_results.values()):
+                    comparison = dict(strict_equal=True, production_equal=True, both_failed=True)
+                elif any(result["exit_code"] != 0 or result["error"] is not None for result in variant_results.values()):
                     save_product_contents(variant_results)
                 else:
                     # compare build products
@@ -81,7 +81,7 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path) -> in
                 comparison = {"error": str(error)}
             (run_directory / f"{commit_index:04d}-{commit_id[:12]}-comparison.json").write_text(json.dumps(comparison, indent=2) + "\n")
             tqdm.write(f"{commit_index:04d} comparison: {comparison}")
-            failed |= "error" in comparison or comparison.get("production_equal") is False
+            failed = "error" in comparison or comparison.get("production_equal") is False
             progress.update(1)
             if failed:
                 break

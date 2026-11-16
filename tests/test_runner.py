@@ -1,4 +1,5 @@
 from contextlib import ExitStack, contextmanager
+import csv
 import io
 import json
 from pathlib import Path
@@ -240,7 +241,9 @@ sys.exit(7 if home.endswith('fail') else 0)
     assert not (run_directory / "project").exists()
 
 
-@pytest.mark.parametrize("failure", [None, "baseline", "sut", "production", "debug", "collection", "both-up-to-date", "baseline-up-to-date", "sut-up-to-date"])
+@pytest.mark.parametrize(
+    "failure", [None, "baseline", "sut", "production", "debug", "collection", "both-collection", "both-failed", "both-failed-collection", "both-failed-then-diff", "all-failed", "both-up-to-date", "baseline-up-to-date", "sut-up-to-date"]
+)
 def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     """Verify replay order and stopping with fake builds writing records under tmp_path.
 
@@ -289,7 +292,10 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
         assert project_config.gradle_args == [f"-Pfixture={tmp_path}/fixture"]
         (project_directory.parent / f"{record_stem}.gradle.log").write_text("completed")
         skipped = commit_id == "b" and failure in ("both-up-to-date", f"{variant}-up-to-date")
-        return dict(cwd=str(project_directory), exit_code=int(commit_id == "b" and variant == failure), error=None, task_state="UP-TO-DATE" if skipped else "EXECUTED", link=None if skipped else {"task": ":app:link"})
+        both_failed = failure == "all-failed" or (commit_id == "b" and failure in ("both-failed", "both-failed-collection", "both-failed-then-diff"))
+        code = (1 if variant == "baseline" else 7) if both_failed else int(commit_id == "b" and variant == failure)
+        error = f"Unrelated {variant} failure" if both_failed else None
+        return dict(cwd=str(project_directory), exit_code=code, error=error, task_state="FAILED" if both_failed else "UP-TO-DATE" if skipped else "EXECUTED", link=None if skipped or both_failed else {"task": ":app:link"})
 
     monkeypatch.setattr(runner, "build_project", fake_build_project)
 
@@ -300,40 +306,55 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
         """
         assert active
         collected.append(calls[-1])
-        if failure == "collection" and calls[-1] == ("b", "baseline"):
+        if (failure == "collection" and calls[-1] == ("b", "baseline")) or (failure in ("both-collection", "both-failed-collection") and calls[-1][0] == "b"):
             raise ValueError("Cache file cannot be read")
         return []
 
     def fake_collect_product_hashes(build_result):
         """Verify build_result already has commit/variant metadata while the project is active."""
         assert active
+        assert build_result["exit_code"] == 0 and build_result["error"] is None
         assert (build_result["commit"], build_result["variant"]) == calls[-1]
 
     def fake_compare_products(variant_results):
         """Use variant_results' baseline commit to inject differences after worktrees are parked."""
         assert not active
+        assert all(result["exit_code"] == 0 and result["error"] is None for result in variant_results.values())
         if any(result["task_state"] == "UP-TO-DATE" for result in variant_results.values()):
             return compare_products(variant_results)
-        changed = failure in ("production", "debug") and variant_results["baseline"]["commit"] == "b"
-        return dict(strict_equal=not changed, production_equal=not (changed and failure == "production"))
+        changed = (failure in ("production", "debug") and variant_results["baseline"]["commit"] == "b") or (failure == "both-failed-then-diff" and variant_results["baseline"]["commit"] == "c")
+        return dict(strict_equal=not changed, production_equal=not (changed and failure != "debug"))
 
     monkeypatch.setattr(runner, "collect_cache_files", fake_collect_cache_files)
     monkeypatch.setattr(runner, "collect_product_hashes", fake_collect_product_hashes)
     monkeypatch.setattr(runner, "save_product_contents", lambda *_: None)
     monkeypatch.setattr("impl.comparison.save_product_contents", lambda results: saved.append(results))
     monkeypatch.setattr(runner, "compare_products", fake_compare_products)
-    assert replay_commits(Path("compilers.yaml"), Path("project.yaml")) == int(failure not in (None, "debug", "both-up-to-date"))
+    succeeds = failure in (None, "debug", "both-up-to-date", "both-failed", "both-failed-collection", "all-failed")
+    assert replay_commits(Path("compilers.yaml"), Path("project.yaml")) == int(not succeeds)
     assert created == [("baseline", "a"), ("sut", "a")]
-    revisions = ["a", "b"] if failure not in (None, "debug", "both-up-to-date") else ["a", "b", "c"]
+    revisions = ["a", "b", "c"] if succeeds or failure == "both-failed-then-diff" else ["a", "b"]
     assert calls == [(sha, name) for sha in revisions for name in ("baseline", "sut")]
     (run_directory,) = (tmp_path / "run").iterdir()
     assert len(list(run_directory.glob("*.json"))) == len(calls) + len(revisions)
     assert (run_directory / "summary.csv").is_file()
+    with (run_directory / "summary.csv").open(newline="") as summary:
+        rows = list(csv.DictReader(summary))
     for index, sha in enumerate(revisions):
+        both_failed = failure == "all-failed" or (sha == "b" and failure in ("both-failed", "both-failed-collection", "both-failed-then-diff"))
+        comparison = json.loads((run_directory / f"{index:04d}-{sha}-comparison.json").read_text())
+        assert rows[index]["both_failed"] == str(both_failed)
+        if both_failed:
+            assert comparison == dict(strict_equal=True, production_equal=True, both_failed=True)
+            assert rows[index]["strict_equal"] == rows[index]["production_equal"] == "True"
         for name in ("baseline", "sut"):
             record_name = f"{index:04d}-{sha}-{name}"
             record = json.loads((run_directory / f"{record_name}.json").read_text())
             assert record["commit"] == sha
+            if both_failed:
+                assert record["exit_code"] == (1 if name == "baseline" else 7)
+                assert record["error"] == f"Unrelated {name} failure"
+                assert record["artifacts"] is None
             if record["task_state"] == "UP-TO-DATE":
                 assert record["link"] is record["cache_files"] is record["artifacts"] is None
                 assert (sha, name) not in collected
