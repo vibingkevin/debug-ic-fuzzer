@@ -1,0 +1,10 @@
+# Validated 356-commit history on Apple Silicon with Xcode.
+repository: "https://github.com/joreilly/Confetti.git"
+branch: "main"
+start_commit: "4b7516363660074f3da485f335af197938192532"
+end_commit: "252919d010e00cc07f917f47f0431d3331e7eeca"
+direction: forward
+task: ":shared:linkDebugFrameworkIosSimulatorArm64"
+gradle_args:
+  - "--max-workers=2"
+  - "-Dorg.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8"
