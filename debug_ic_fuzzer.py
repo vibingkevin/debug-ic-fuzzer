@@ -48,6 +48,7 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path, *, st
     if start_at >= total_commits:
         raise ValueError(f"--start-at {start_at} is outside the {total_commits}-commit range")
     commit_ids = commit_ids[start_at : None if commit_count is None else start_at + commit_count]
+    print(f"Repository ready. Preparing to replay {len(commit_ids)} commits (start-at={start_at}, total={total_commits}).", flush=True)
     run_directory = tool_directory / "run" / f"{compilers_config_path.stem}-{project_config_path.stem}-{datetime.now():%Y%m%d-%H%M%S-%f}"
     run_directory.mkdir(parents=True)
     (run_directory / "range.json").write_text(json.dumps(dict(total_commits=total_commits, start_at=start_at, commit_count=len(commit_ids), commits=commit_ids), indent=2) + "\n")
