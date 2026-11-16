@@ -1,0 +1,115 @@
+name: ShowcaseApp
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: showcase-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    name: commits-${{ matrix.start_at }}${{ matrix.guard && '-guard' || '' }}
+    runs-on: macos-15
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - start_at: 0
+          - start_at: 50
+          - start_at: 100
+          - start_at: 150
+          - start_at: 200
+            guard: true
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+      PYTHONDONTWRITEBYTECODE: '1'
+      START_AT: ${{ matrix.start_at }}
+      GUARD: ${{ matrix.guard || false }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            21
+      - name: Install Python dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -e .
+      - name: Download fixed compiler
+        if: ${{ !matrix.guard }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive=kotlin-native-prebuilt-macos-aarch64-2.4.21-9267.tar.gz
+          gh release download compiler-2.4.21-9267 --repo vibingkevin/debug-ic-fuzzer-validation --pattern "$archive" --dir compilers --clobber
+          printf '%s  %s\n' c59d73272d932b865f48d8187e6cca40694dfdbd30e46a776056680fd339bf2e "compilers/$archive" | shasum -a 256 -c -
+      - name: Prepare Sentry framework
+        if: ${{ !matrix.guard }}
+        run: |
+          directory="$RUNNER_TEMP/showcase-sentry-8.58.0"
+          mkdir -p "$directory"
+          curl --fail --location --retry 3 \
+            https://github.com/getsentry/sentry-cocoa/releases/download/8.58.0/Sentry.xcframework.zip \
+            --output "$directory/Sentry.xcframework.zip"
+          printf '%s  %s\n' d883f19575ab064633237c2c58ee16a1e596c58f5efe1c110f65998bc71b0389 "$directory/Sentry.xcframework.zip" | shasum -a 256 -c -
+          unzip -q "$directory/Sentry.xcframework.zip" -d "$directory"
+          echo "SENTRY_FRAMEWORK_PATH=$directory/Sentry.xcframework" >> "$GITHUB_ENV"
+      - name: Prepare OpenCV download
+        if: ${{ !matrix.guard }}
+        run: |
+          archive="$RUNNER_TEMP/opencv2-4.12.0.xcframework.zip"
+          curl --fail --location --retry 3 \
+            https://github.com/yeatse/opencv-spm/releases/download/4.12.0/opencv2.xcframework.zip \
+            --output "$archive"
+          printf '%s  %s\n' 13409e99956a74aaee1856c56889c211116fbc8be2bcbe373986ec9e10f536fc "$archive" | shasum -a 256 -c -
+          echo "SHOWCASE_OPENCV_ARCHIVE=$archive" >> "$GITHUB_ENV"
+      - name: Restore dependency downloads
+        if: ${{ !matrix.guard }}
+        uses: actions/cache@v5
+        with:
+          path: |
+            .gradle-home/caches/modules-2
+            .gradle-home/wrapper/dists
+            .konan/dependencies
+          key: showcase-dependencies-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/showcase-app.yaml', 'configs/showcase-*.init.gradle') }}
+      - name: Replay page
+        shell: bash
+        run: |
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/showcase-app.yaml --start-at "$START_AT" --commit-count 50)
+          if [ "$GUARD" = true ]; then
+            set +e
+            output=$("${replay[@]}" 2>&1)
+            result=$?
+            set -e
+            printf '%s\n' "$output"
+            if [ "$result" -eq 2 ] && grep -Eq "^--start-at $START_AT is outside the [0-9]+-commit range$" <<< "$output"; then
+              echo 'Guard page is empty as expected.'
+              exit 0
+            fi
+            echo '::error::Guard page did not report an empty range. Check the log; if it contains commits, extend the matrix and move the guard.'
+            exit 1
+          fi
+          "${replay[@]}"
+      - name: Upload replay results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: showcase-${{ matrix.start_at }}
+          retention-days: 7
+          path: |
+            run/*/*.json
+            run/*/*.csv
+            run/*/*.log
+            run/*/store/**

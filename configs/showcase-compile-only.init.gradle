@@ -1,0 +1,26 @@
+// Upstream platform-builds.yml uses these placeholders for compilation only.
+// The oldest selected commits also require IP_GEO_API_KEY to be non-null.
+gradle.beforeSettings { settings ->
+    if (gradle.parent != null) return
+    def properties = new File(settings.settingsDir, 'local.properties')
+    if (!properties.exists()) {
+        properties.text = '''SUPABASE_URL=https://compile-only.invalid
+SUPABASE_ANON_KEY=compile-only
+SENTRY_DSN=https://compile-only@compile-only.invalid/1
+IP_GEO_API_KEY=compile-only
+TMDB_API_KEY=compile-only
+PEXELS_API_KEY=compile-only
+UNSPLASH_API_KEY=compile-only
+'''
+    }
+}
+
+// Allow the pinned Sentry archive to be prepared outside Xcode's network resolver.
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin('io.sentry.kotlin.multiplatform.gradle') {
+        def framework = System.getenv('SENTRY_FRAMEWORK_PATH')
+        if (framework) {
+            project.extensions.getByName('sentryKmp').linker.frameworkPath.set(framework)
+        }
+    }
+}
