@@ -242,7 +242,26 @@ sys.exit(7 if home.endswith('fail') else 0)
 
 
 @pytest.mark.parametrize(
-    "failure", [None, "baseline", "sut", "production", "debug", "collection", "both-collection", "both-failed", "both-failed-collection", "both-failed-then-diff", "all-failed", "both-up-to-date", "baseline-up-to-date", "sut-up-to-date"]
+    "failure",
+    [
+        None,
+        "baseline",
+        "sut",
+        "production",
+        "debug",
+        "collection",
+        "both-collection",
+        "both-failed",
+        "both-failed-collection",
+        "both-failed-then-diff",
+        "all-failed",
+        "both-up-to-date",
+        "baseline-up-to-date",
+        "sut-up-to-date",
+        "baseline-clean",
+        "sut-clean",
+        "both-clean",
+    ],
 )
 def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     """Verify replay order and stopping with fake builds writing records under tmp_path.
@@ -254,7 +273,7 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     from impl.config import Compilers
     from impl.comparison import compare_products
 
-    compilers = Compilers(compilers={name: Compiler(kotlin_version="2.4.21") for name in ("baseline", "sut")})
+    compilers = Compilers(compilers={name: Compiler(kotlin_version="2.4.21", clean_build=failure in (f"{name}-clean", "both-clean")) for name in ("baseline", "sut")})
     project = Project(repository="https://example.test/project.git", branch="main", start_commit="a", end_commit="c", task=":app:link", gradle_args=["-Pfixture={config_dir}/fixture"])
     monkeypatch.setattr(runner, "load_config", lambda path, model: compilers if model is Compilers else project)
     monkeypatch.setattr(runner, "resolve_native_home", lambda *_: Path("/shared-compiler"))
@@ -279,7 +298,7 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     monkeypatch.setattr(runner, "activate_worktree", fake_activate_worktree)
     monkeypatch.setattr(runner, "create_detached_worktree", lambda bare_repository, worktree_directory, commit_id: created.append((worktree_directory.name, commit_id)))
 
-    def fake_build_project(project_directory, project_config, compiler_config, native_home, record_stem):
+    def fake_build_project(project_directory, project_config, compiler_config, native_home, record_stem, *, force_link=False):
         """Write a fake build log beside project_directory and return an injected build result.
 
         record_stem identifies the test commit and variant. project_config supplies
@@ -287,6 +306,7 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
         and native_home are unused arguments matching build_project.
         """
         assert active
+        assert force_link == any(compiler.clean_build for compiler in compilers.compilers.values())
         _, commit_id, variant = record_stem.split("-")
         calls.append((commit_id, variant))
         assert project_config.gradle_args == [f"-Pfixture={tmp_path}/fixture"]
@@ -330,7 +350,7 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     monkeypatch.setattr(runner, "save_product_contents", lambda *_: None)
     monkeypatch.setattr("impl.comparison.save_product_contents", lambda results: saved.append(results))
     monkeypatch.setattr(runner, "compare_products", fake_compare_products)
-    succeeds = failure in (None, "debug", "both-up-to-date", "both-failed", "both-failed-collection", "all-failed")
+    succeeds = failure in (None, "debug", "both-up-to-date", "both-failed", "both-failed-collection", "all-failed", "baseline-clean", "sut-clean", "both-clean")
     assert replay_commits(Path("compilers.yaml"), Path("project.yaml")) == int(not succeeds)
     assert created == [("baseline", "a"), ("sut", "a")]
     revisions = ["a", "b", "c"] if succeeds or failure == "both-failed-then-diff" else ["a", "b"]
