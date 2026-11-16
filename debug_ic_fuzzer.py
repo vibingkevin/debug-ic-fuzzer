@@ -83,7 +83,7 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path, *, st
             comparison = {"error": "Build or collection failed"}
             try:
                 if all(result["exit_code"] != 0 for result in variant_results.values()):
-                    comparison = dict(strict_equal=True, production_equal=True, both_failed=True)
+                    comparison = dict(strict_equal=None, production_equal=None, both_failed=True)
                 elif any(result["exit_code"] != 0 or result["error"] is not None for result in variant_results.values()):
                     save_product_contents(variant_results)
                 else:

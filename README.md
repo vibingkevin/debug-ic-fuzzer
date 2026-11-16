@@ -2,13 +2,13 @@
 
 [![Animeko](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/animeko.yml/badge.svg?branch=main)](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/animeko.yml?query=branch%3Amain) [![Confetti](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/confetti.yml/badge.svg?branch=main)](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/confetti.yml?query=branch%3Amain) [![FeedFlow](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/feed-flow.yml/badge.svg?branch=main)](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/feed-flow.yml?query=branch%3Amain) [![IC sample](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/ic-sample.yml/badge.svg?branch=main)](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/ic-sample.yml?query=branch%3Amain) [![Keyguard](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/keyguard.yml/badge.svg?branch=main)](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/keyguard.yml?query=branch%3Amain) [![KotlinConf](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/kotlinconf.yml/badge.svg?branch=main)](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/kotlinconf.yml?query=branch%3Amain) [![Movies](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/movies.yml/badge.svg?branch=main)](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/movies.yml?query=branch%3Amain) [![Music Assistant](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/music-assistant.yml/badge.svg?branch=main)](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/music-assistant.yml?query=branch%3Amain) [![ShowcaseApp](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/showcase.yml/badge.svg?branch=main)](https://github.com/vibingkevin/debug-ic-fuzzer/actions/workflows/showcase.yml?query=branch%3Amain)
 
-Find the commit where two Kotlin/Native incremental builds start producing different output. The tool replays a Git history with a `baseline` compiler and a `sut` (system under test), compares their products after each commit, and records the builds for investigation.
+Find the commit where two Kotlin/Native incremental builds start producing different output. The tool replays a Git history with a `baseline` compiler and a `sut` (system under test), compares their products after each commit, and records essential info for investigation.
 
-Both sides keep their own build state as the replay advances. Using the same compiler on both sides checks repeatability; changing `sut` compares a candidate compiler against the baseline. This is an incremental replay, not a clean rebuild of every commit. It builds Native products and does not run application tests.
+Both compilers keep their own build state as the replay advances. Using the same compiler on both sides checks debug build repeatability of that compiler; using a different `sut` compares a candidate compiler against the baseline. The replay is incremental, not a clean rebuild of every commit. It builds native products and does not run any tests.
 
 ## Run the IC sample
 
-Use Linux x64 or macOS (Apple Silicon or Intel) with Python 3.12+, Git, and a JDK compatible with the sample (the CI uses JDK 21). Linux needs `llvm-strip` on `PATH`; macOS needs Xcode selected with `xcode-select`. Run these commands from this repository:
+Use Linux x64 or macOS (Apple Silicon or Intel) with Python 3.12+, Git, and a JDK compatible with the sample (Github Action uses JDK 21). Linux needs `llvm-strip` on `PATH`; macOS needs Xcode selected with `xcode-select`. Run these commands from this repository:
 
 ```sh
 python3 -m venv .venv
@@ -16,15 +16,12 @@ python3 -m venv .venv
 .venv/bin/debug-ic-fuzzer \
   --compilers configs/compilers-2.4.21.yaml \
   --project configs/ic-sample-linux.yaml
+# On macOS, use --project configs/ic-sample-ios.yaml instead
 ```
-
-On Apple Silicon macOS, use `configs/ic-sample-ios.yaml` instead. The Linux sample builds an executable; the macOS sample builds an iOS simulator framework. Both replay from the configured baseline through the latest commit on `main`.
-
-On Intel macOS, select a project task targeting `iosArm64` for iOS IC replay. The official Kotlin/Native 2.4.21 distribution lists `macos_x64`, `ios_x64`, and `ios_arm64` in `cacheableTargets.macos_x64`; it does not list `ios_simulator_arm64`. An Intel-hosted simulator ARM64 link can succeed without enabling IC or writing a built-cache report. Confirm `-Xenable-incremental-compilation` and `-Xic-cache-dir` in the link arguments; passing `kotlin.incremental.native=true` alone does not establish that IC ran.
 
 The compiler configuration above uses Kotlin 2.4.21 on both sides. Gradle downloads the Native distribution on first use. To use the checked-in distributions with the inline DWARF fix, install Git LFS, run `git lfs pull`, and select `configs/compilers-2.4.21-9267.yaml`. That configuration also uses the same compiler on both sides; it selects the archive for the current host.
 
-After repository preparation, a progress bar advances once per completed commit pair. Gradle output goes into log files rather than streaming to the terminal. The tool prints the run directory when replay finishes.
+You can find the logs for the run under `run` folder.
 
 ## Read the result
 
@@ -37,13 +34,13 @@ There are two equality checks. `strict_equal` compares original product bytes, i
 | Both checks are true | Continue to the next commit. |
 | Strict differs, production matches | Save the original products and continue; inspect the debug or identity difference separately. |
 | Production differs | Save the original products and stop after this commit pair. |
-| Both builds return nonzero exit codes | Record both equality checks as true and `both_failed=true`, then continue. Exit codes and failure reasons need not match; products are not compared. |
-| Both links are `UP-TO-DATE` | Skip comparison and continue. Equality fields are blank in CSV and `null` in JSON. |
+| Both builds return nonzero exit codes | Leave both equality checks blank and record `Both Failed` in the CSV `note` column, then continue. Exit codes and failure reasons need not match; products are not compared. Some commits just won't compile for native iOS target. |
+| Both links are `UP-TO-DATE` | Skip comparison and continue. Equality fields are blank in CSV and `null` in JSON; the CSV `note` column records `Both UP-TO-DATE`. |
 | Only one build fails, only one link is `UP-TO-DATE`, or collection fails after a successful build | Record the error and stop after this commit pair. |
 
 For a failing or differing row, open its `0000-<commit12>-comparison.json` first, then the corresponding `-baseline.json`, `-sut.json`, and `.gradle.log` files. JSON records contain the commands, compiler paths, errors, artifact hashes, and cache snapshots. Saved product contents are under that run’s `store/` directory.
 
-A replay whose commit pairs are all accepted returns exit code 0, including pairs where both builds fail. A failed comparison or one-sided build failure returns 1. An exception that aborts preparation or replay returns 2 and bypasses summary generation. See [Replay details](docs/replay.md) for comparison rules, cache scope, and evidence retention.
+A replay whose commit pairs are all accepted returns exit code 0. A failed comparison or one-sided build failure returns 1. An exception that aborts preparation or replay returns 2 and bypasses summary generation. See [Replay details](docs/replay.md) for comparison rules, cache scope, and evidence retention.
 
 ## Replay your project
 
@@ -61,7 +58,7 @@ gradle_args: []
 
 Both endpoints are included. `latest` resolves to the fetched tip of `branch`. The range follows first-parent history; `reverse` visits the same range backwards, and equal endpoints build just one commit. An endpoint missing from that history is an error. When the upstream history is rewritten, update the configured commit IDs.
 
-To replay a page from the same YAML, add a zero-based offset and a maximum count:
+To replay part of the commits from the same YAML, add a zero-based offset and a maximum count:
 
 ```sh
 .venv/bin/debug-ic-fuzzer --compilers configs/compilers-2.4.21-9267.yaml --project configs/confetti.yaml --start-at 50 --commit-count 50
@@ -69,13 +66,7 @@ To replay a page from the same YAML, add a zero-based offset and a maximum count
 
 Paging applies after selecting the YAML range and its `direction`. With no paging options, the full range is replayed. Omit `--commit-count` to replay everything from `--start-at`; the last page may be shorter than the requested count. Negative offsets, nonpositive counts, and offsets selecting no commits return exit code 2. Each run writes its actual ordered commit SHAs and page bounds to `range.json`; result filenames use page-local indices.
 
-Each page starts with independent baseline/sut build state at its first selected commit. It retains incremental state within the page and does not replay the preceding commits, so separate pages do not cover incremental transitions across page boundaries. For append-only upstream history, new commits extend the last page until it fills; a later run needs another page after that. History rewrites can change page membership.
-
-The manually dispatched [Confetti workflow](.github/workflows/confetti.yml) runs offsets 0 through 350 in groups of 50 using the same YAML. An extra guard page at offset 400 must report an empty range. If it finds commits, the workflow fails to request another normal page and a new guard offset. Only the specific empty-range error is accepted by the guard; build and setup failures still fail CI. Every job resolves `latest` independently and uploads its resolved `range.json`.
-
 Use `gradle_args` for project properties and extra init scripts. `{config_dir}` expands to the project YAML’s directory, so an init-script argument can be written as `{config_dir}/project.init.gradle`.
-
-The supplied [Animeko configuration](configs/animeko-openani.yaml) demonstrates project-specific setup and Apple linker workarounds. The [Workbench configuration](configs/workbench-ohos.yaml) targets OHOS and lists its SDK, toolchain, and host requirements. These projects need their own build prerequisites in addition to the fuzzer’s dependencies.
 
 The [FeedFlow configuration](configs/feed-flow.yaml) starts at the first Kotlin 2.4 commit and overrides older SKIE releases with 0.10.16 for Kotlin 2.4.21 compatibility. It requires a Swift toolchain with `-prefix-map-sourceinfo`, which zeros source-info timestamps, and disables Clang module breadcrumbs in static Swift objects. Apple Swift 6.3.1 and 6.3.2 do not support the source-info flag; the official [2026-11-01 Swift development snapshot](https://www.swift.org/install/macos/) does. The comparison rules remain unchanged.
 
@@ -121,13 +112,11 @@ Absolute CLI and archive paths are used directly. The tool leaves the project’
 - [`___chkstk_darwin` provider selection](issues/chkstk/): `ld-prime` chooses between system and compiler-rt implementations.
 - [Inline DWARF source ownership](issues/inline-dwarf/): Kotlin/Native source-location errors, fixed on upstream `master`.
 
-## Projects not included
+## Rejected Projects
 
-[SimpMusic](https://github.com/maxrave-dev/SimpMusic): the upstream [project guide](https://github.com/maxrave-dev/SimpMusic/blob/f78a4fd6da9680e5771f4763194d2895d26914fd/CLAUDE.md) lists iOS as future work. Our [iOS sublibrary build attempts failed](https://github.com/vibingkevin/debug-ic-fuzzer-validation/actions/runs/43736378961/job/132879879034), so the project is not included in iOS replay tests.
+[SimpMusic](https://github.com/maxrave-dev/SimpMusic): the upstream [project guide](https://github.com/maxrave-dev/SimpMusic/blob/f78a4fd6da9680e5771f4763194d2895d26914fd/CLAUDE.md) lists iOS as future work.
 
 ## Development
-
-To monitor the latest run of each active workflow on `main`, authenticate the GitHub CLI and run `python3 scripts/watch_actions.py`. It checks every minute, reports failed matrix jobs as soon as they finish, and saves a status snapshot and failure logs under `.actions-monitor/`. Cancelled jobs remain in the snapshot but do not trigger log downloads. It exits after all latest runs finish (0 for success, 1 for failures, 2 for an initial API error); use `--once` for one check or `--watch` to keep following new runs. The script only observes runs; fixes and reruns require inspecting the saved evidence.
 
 ```sh
 .venv/bin/python -m pip install -e '.[test,format]'

@@ -343,10 +343,11 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     for index, sha in enumerate(revisions):
         both_failed = failure == "all-failed" or (sha == "b" and failure in ("both-failed", "both-failed-collection", "both-failed-then-diff"))
         comparison = json.loads((run_directory / f"{index:04d}-{sha}-comparison.json").read_text())
-        assert rows[index]["both_failed"] == str(both_failed)
+        assert "both_failed" not in rows[index]
+        assert rows[index]["note"] == ("Both Failed" if both_failed else "Both UP-TO-DATE" if sha == "b" and failure == "both-up-to-date" else "")
         if both_failed:
-            assert comparison == dict(strict_equal=True, production_equal=True, both_failed=True)
-            assert rows[index]["strict_equal"] == rows[index]["production_equal"] == "True"
+            assert comparison == dict(strict_equal=None, production_equal=None, both_failed=True)
+            assert rows[index]["strict_equal"] == rows[index]["production_equal"] == ""
         for name in ("baseline", "sut"):
             record_name = f"{index:04d}-{sha}-{name}"
             record = json.loads((run_directory / f"{record_name}.json").read_text())
