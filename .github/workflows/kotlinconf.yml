@@ -14,7 +14,6 @@ jobs:
   replay:
     name: macos-arm64
     runs-on: macos-15
-    timeout-minutes: 360
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
       PYTHONDONTWRITEBYTECODE: '1'

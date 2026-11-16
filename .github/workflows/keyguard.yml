@@ -14,7 +14,6 @@ jobs:
   replay:
     name: ${{ matrix.project }}-${{ matrix.start_at }}${{ matrix.guard && '-guard' || '' }}
     runs-on: macos-15
-    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
