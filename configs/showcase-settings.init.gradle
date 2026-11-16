@@ -24,3 +24,23 @@ gradle.beforeProject { project ->
         }
     }
 }
+
+// Reuse the upstream pinned download through its existing --archive option.
+// Project sources and generated/native build outputs remain per variant.
+gradle.beforeProject { project ->
+    if (project.path == ':local-face-detection') {
+        project.tasks.withType(org.gradle.api.tasks.Exec).configureEach { task ->
+            if (task.name == 'buildFaceDetectionIosSimulatorArm64') {
+                task.doFirst {
+                    def archivePath = System.getenv('SHOWCASE_OPENCV_ARCHIVE')
+                    if (!archivePath) throw new GradleException('SHOWCASE_OPENCV_ARCHIVE is required')
+                    def archive = new File(archivePath)
+                    if (!archive.isAbsolute() || !archive.isFile()) {
+                        throw new GradleException('Expected an existing absolute OpenCV archive path')
+                    }
+                    task.args('--archive', archive.absolutePath)
+                }
+            }
+        }
+    }
+}
