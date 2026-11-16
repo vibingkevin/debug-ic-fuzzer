@@ -1,66 +1,47 @@
-name: IC sample
+name: KotlinConf
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
-    paths:
-      - '**'
-      - '!**/*.md'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - '**'
-      - '!**/*.md'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ic-sample-${{ github.ref }}
+  group: kotlinconf-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   replay:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux-x64
-            os: ubuntu-24.04
-            project: configs/ic-sample-linux.yaml
-            compilers: configs/compilers-2.4.21-9267.yaml
-          - name: macos-arm64
-            os: macos-15
-            project: configs/ic-sample-ios.yaml
-            compilers: configs/compilers-2.4.21-9267.yaml
-          - name: macos-x64
-            os: macos-15-intel
-            project: configs/ic-sample-ios.yaml
-            compilers: configs/compilers-2.4.21.yaml
-    timeout-minutes: 45
+    name: macos-arm64
+    runs-on: macos-15
+    timeout-minutes: 360
     env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v6
         with:
-          lfs: true
+          lfs: false
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - uses: actions/setup-java@v5
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           distribution: temurin
           java-version: '21'
       - name: Install Python dependencies
         run: |
           python -m venv .venv
-          .venv/bin/python -m pip install -e '.[test]'
-      - name: Install ELF tools
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y llvm
+          .venv/bin/python -m pip install -e .
+      - name: Download fixed compiler
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive=kotlin-native-prebuilt-macos-aarch64-2.4.21-9267.tar.gz
+          gh release download compiler-2.4.21-9267 --repo vibingkevin/debug-ic-fuzzer-validation --pattern "$archive" --dir compilers --clobber
+          printf '%s  %s\n' c59d73272d932b865f48d8187e6cca40694dfdbd30e46a776056680fd339bf2e "compilers/$archive" | shasum -a 256 -c -
       - name: Restore dependency downloads
         uses: actions/cache@v5
         with:
@@ -68,17 +49,16 @@ jobs:
             .gradle-home/caches/modules-2
             .gradle-home/wrapper/dists
             .konan/dependencies
-          key: ic-dependencies-${{ matrix.name }}-${{ hashFiles('configs/compilers*.yaml', 'configs/ic-sample-*.yaml') }}
-      - name: Run unit tests
-        run: .venv/bin/python -m pytest -q
-      - name: Replay IC sample
-        run: .venv/bin/python debug_ic_fuzzer.py --compilers ${{ matrix.compilers }} --project ${{ matrix.project }}
+          key: kotlinconf-dependencies-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/kotlinconf-app.yaml') }}
+      - name: Replay KotlinConf
+        run: |
+          .venv/bin/python debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/kotlinconf-app.yaml
       - name: Upload replay results
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: ic-sample-${{ matrix.name }}
-          retention-days: 3
+          name: kotlinconf-macos-arm64
+          retention-days: 7
           path: |
             run/*/*.json
             run/*/*.csv
