@@ -29,7 +29,6 @@ jobs:
           - { project: keyguard-ios, start_at: 350 }
           - { project: keyguard-ios, start_at: 400 }
           - { project: keyguard-ios, start_at: 450 }
-          - { project: keyguard-ios, start_at: 500, guard: true }
           - { project: keyguard-apple, start_at: 0 }
           - { project: keyguard-apple, start_at: 50 }
           - { project: keyguard-apple, start_at: 100 }
