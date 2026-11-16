@@ -1,0 +1,7 @@
+repository: "https://github.com/michaelbel/movies.git"
+branch: "develop"
+start_commit: "1c6cdd3a20d145d36c06b2d93927dbd2e11452b7"
+end_commit: "latest"
+direction: forward
+task: ":iosAppCompose:linkDebugFrameworkIosSimulatorArm64"
+gradle_args: []
