@@ -71,21 +71,21 @@ jobs:
       - name: Replay page
         shell: bash
         run: |
-          mkdir -p evidence
-          set +e
-          .venv/bin/python debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/confetti.yaml --start-at "$START_AT" --commit-count 50 > evidence/replay.log 2>&1
-          result=$?
-          set -e
-          cat evidence/replay.log
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/confetti.yaml --start-at "$START_AT" --commit-count 50)
           if [ "$GUARD" = true ]; then
-            if [ "$result" -eq 2 ] && grep -Eq "^--start-at $START_AT is outside the [0-9]+-commit range$" evidence/replay.log; then
+            set +e
+            output=$("${replay[@]}" 2>&1)
+            result=$?
+            set -e
+            printf '%s\n' "$output"
+            if [ "$result" -eq 2 ] && grep -Eq "^--start-at $START_AT is outside the [0-9]+-commit range$" <<< "$output"; then
               echo 'Guard page is empty as expected.'
               exit 0
             fi
             echo '::error::Guard page did not report an empty range. Check the log; if it contains commits, extend the matrix and move the guard.'
             exit 1
           fi
-          exit "$result"
+          "${replay[@]}"
       - name: Upload replay results
         if: always()
         uses: actions/upload-artifact@v6
@@ -93,7 +93,6 @@ jobs:
           name: confetti-${{ matrix.start_at }}
           retention-days: 7
           path: |
-            evidence/**
             run/*/*.json
             run/*/*.csv
             run/*/*.log
