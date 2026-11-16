@@ -13,7 +13,7 @@ concurrency:
 jobs:
   replay:
     name: commits-${{ matrix.start_at }}${{ matrix.guard && '-guard' || '' }}
-    runs-on: macos-15
+    runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
@@ -45,7 +45,7 @@ jobs:
           - start_at: 1200
             guard: true
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       PYTHONDONTWRITEBYTECODE: '1'
       START_AT: ${{ matrix.start_at }}
       GUARD: ${{ matrix.guard || false }}
