@@ -40,7 +40,6 @@ jobs:
             os: macos-15-intel
             project: configs/ic-sample-ios.yaml
             compilers: configs/compilers-2.4.21.yaml
-    timeout-minutes: 45
     env:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
