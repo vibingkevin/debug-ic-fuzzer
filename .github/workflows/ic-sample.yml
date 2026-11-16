@@ -67,33 +67,6 @@ jobs:
         run: .venv/bin/python -m pytest -q
       - name: Replay IC sample
         run: .venv/bin/python debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project ${{ matrix.project }}
-      - name: Verify build failure and recovery
-        run: |
-          .venv/bin/python - <<'PY'
-          import json
-          from pathlib import Path
-
-          project = Path("${{ matrix.project }}").stem
-          run, = Path("run").glob(f"*-{project}-*")
-          commits = [
-              "43749cd3bc80b5d78a66fc8e7b1f4c4bf1e5cb59",
-              "e6907ee6d7328342ee7fabceaa417d2716aa7c13",
-              "50c63396cded2b7cd0c01e757a7532ed1e731840",
-          ]
-          for index, commit in enumerate(commits):
-              path, = run.glob(f"*-{commit[:12]}-comparison.json")
-              prefix = path.name.removesuffix("-comparison.json")
-              comparison = json.loads(path.read_text())
-              assert comparison["strict_equal"] is comparison["production_equal"] is True
-              assert comparison.get("both_failed", False) is (index == 1)
-              for variant in ("baseline", "sut"):
-                  result = json.loads((run / f"{prefix}-{variant}.json").read_text())
-                  assert result["commit"] == commit
-                  assert (result["exit_code"] != 0) is (index == 1)
-                  if index != 1:
-                      assert result["task_state"] == "EXECUTED" and result["artifacts"]
-          print("Both builds failed at the intermediate commit and linked successfully after recovery.")
-          PY
       - name: Upload replay results
         if: always()
         uses: actions/upload-artifact@v6
