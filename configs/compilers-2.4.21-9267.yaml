@@ -8,8 +8,10 @@ compilers:
     kotlin_native_home:
       - "../compilers/kotlin-native-prebuilt-linux-x86_64-2.4.21-9267.tar.gz"
       - "../compilers/kotlin-native-prebuilt-macos-aarch64-2.4.21-9267.tar.gz"
+      - "../compilers/kotlin-native-prebuilt-macos-x86_64-2.4.21-9267.tar.gz"
   sut:
     kotlin_version: "2.4.21"
     kotlin_native_home:
       - "../compilers/kotlin-native-prebuilt-linux-x86_64-2.4.21-9267.tar.gz"
       - "../compilers/kotlin-native-prebuilt-macos-aarch64-2.4.21-9267.tar.gz"
+      - "../compilers/kotlin-native-prebuilt-macos-x86_64-2.4.21-9267.tar.gz"
