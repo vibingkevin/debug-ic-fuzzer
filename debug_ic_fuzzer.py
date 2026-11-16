@@ -20,28 +20,39 @@ from impl.repository import prepare_repository, create_detached_worktree, activa
 from impl.summary import write_run_summary
 
 
-def replay_commits(compilers_config_path: Path, project_config_path: Path) -> int:
+def replay_commits(compilers_config_path: Path, project_config_path: Path, *, start_at: int = 0, commit_count: int | None = None) -> int:
     """Replay both compilers, collect results, and stop after a failed commit pair.
 
     Args:
         compilers_config_path: Compiler configuration path, absolute or relative to PROJECT_ROOT.
         project_config_path: Project configuration path, absolute or relative to PROJECT_ROOT.
+        start_at: Zero-based offset in the ordered YAML commit range.
+        commit_count: Maximum commits to replay, or None for the remaining range.
 
     Returns:
         0 if all pairs match, both builds fail, or both links are UP-TO-DATE, otherwise 1. Writes results and
         worktrees under PROJECT_ROOT; configuration/setup errors propagate.
     """
+    if start_at < 0:
+        raise ValueError("--start-at must be nonnegative")
+    if commit_count is not None and commit_count <= 0:
+        raise ValueError("--commit-count must be positive")
     compilers_config_path = (config.PROJECT_ROOT / compilers_config_path).resolve()
     project_config_path = (config.PROJECT_ROOT / project_config_path).resolve()
     compilers = load_config(compilers_config_path, Compilers).compilers
     project_config = load_config(project_config_path, Project)
     project_config.gradle_args = [arg.replace("{config_dir}", str(project_config_path.parent)) for arg in project_config.gradle_args]
     tool_directory = config.PROJECT_ROOT
-    run_directory = tool_directory / "run" / f"{compilers_config_path.stem}-{project_config_path.stem}-{datetime.now():%Y%m%d-%H%M%S}"
+    bare_repository, commit_ids = prepare_repository(tool_directory / "repos", project_config)
+    total_commits = len(commit_ids)
+    if start_at >= total_commits:
+        raise ValueError(f"--start-at {start_at} is outside the {total_commits}-commit range")
+    commit_ids = commit_ids[start_at : None if commit_count is None else start_at + commit_count]
+    run_directory = tool_directory / "run" / f"{compilers_config_path.stem}-{project_config_path.stem}-{datetime.now():%Y%m%d-%H%M%S-%f}"
     run_directory.mkdir(parents=True)
+    (run_directory / "range.json").write_text(json.dumps(dict(total_commits=total_commits, start_at=start_at, commit_count=len(commit_ids), commits=commit_ids), indent=2) + "\n")
     with ExitStack() as compiler_cleanup:
         native_homes = {variant: resolve_native_home(compiler_config, compilers_config_path.parent, compiler_cleanup) for variant, compiler_config in compilers.items()}
-        bare_repository, commit_ids = prepare_repository(tool_directory / "repos", project_config)
         for variant in ("baseline", "sut"):
             create_detached_worktree(bare_repository, run_directory / variant, commit_ids[0])
         failed = False
@@ -96,9 +107,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compilers", required=True, type=Path)
     parser.add_argument("--project", required=True, type=Path)
+    parser.add_argument("--start-at", type=int, default=0, help="Zero-based offset in the ordered YAML commit range (default: 0)")
+    parser.add_argument("--commit-count", type=int, help="Maximum commits to replay (default: all remaining commits)")
     args = parser.parse_args()
     try:
-        return replay_commits(args.compilers, args.project)
+        return replay_commits(args.compilers, args.project, start_at=args.start_at, commit_count=args.commit_count)
     except (ValueError, OSError, subprocess.CalledProcessError, tarfile.TarError, yaml.YAMLError) as error:
         parser.exit(2, f"{error}\n")
 

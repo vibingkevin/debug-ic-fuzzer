@@ -336,7 +336,7 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     revisions = ["a", "b", "c"] if succeeds or failure == "both-failed-then-diff" else ["a", "b"]
     assert calls == [(sha, name) for sha in revisions for name in ("baseline", "sut")]
     (run_directory,) = (tmp_path / "run").iterdir()
-    assert len(list(run_directory.glob("*.json"))) == len(calls) + len(revisions)
+    assert len(list(run_directory.glob("*.json"))) == len(calls) + len(revisions) + 1
     assert (run_directory / "summary.csv").is_file()
     with (run_directory / "summary.csv").open(newline="") as summary:
         rows = list(csv.DictReader(summary))
