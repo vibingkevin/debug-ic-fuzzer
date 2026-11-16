@@ -56,7 +56,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           archive=kotlin-native-prebuilt-macos-aarch64-2.4.21-9267.tar.gz
-          gh release download compiler-2.4.21-9267 --repo vibingkevin/debug-ic-fuzzer-validation --pattern "$archive" --dir compilers --clobber
+          for attempt in 1 2 3; do
+            if gh release download compiler-2.4.21-9267 --repo vibingkevin/debug-ic-fuzzer-validation --pattern "$archive" --dir compilers --clobber; then
+              break
+            fi
+            rm -f "compilers/$archive"
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to download $archive after 3 attempts" >&2
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
           printf '%s  %s\n' c59d73272d932b865f48d8187e6cca40694dfdbd30e46a776056680fd339bf2e "compilers/$archive" | shasum -a 256 -c -
       - name: Restore reusable build caches
         id: build-cache
