@@ -38,7 +38,7 @@ jobs:
             compilers: configs/compilers-2.4.21-9267.yaml
           - name: macos-x64
             os: macos-15-intel
-            project: configs/ic-sample-ios-arm64.yaml
+            project: configs/ic-sample-ios.yaml
             compilers: configs/compilers-2.4.21.yaml
     timeout-minutes: 45
     env:
@@ -73,6 +73,32 @@ jobs:
         run: .venv/bin/python -m pytest -q
       - name: Replay IC sample
         run: .venv/bin/python debug_ic_fuzzer.py --compilers ${{ matrix.compilers }} --project ${{ matrix.project }}
+      - name: Verify Native IC static caches
+        shell: bash
+        run: |
+          .venv/bin/python - <<'PYTHON'
+          import json
+          from pathlib import Path
+
+          (run,) = Path("run").iterdir()
+          for variant in ("baseline", "sut"):
+              evidence = []
+              for record_path in run.glob(f"*-{variant}.json"):
+                  record = json.loads(record_path.read_text())
+                  if record["exit_code"] != 0 or record["error"] is not None or not record["rebuilt_cache_count"]:
+                      continue
+                  caches = [entry for entry in record["cache_files"] if entry["path"].startswith("project/.auto-cache/") and entry["path"].endswith(".a")]
+                  log = (run / record["log"]).read_text()
+                  if caches and "-Xenable-incremental-compilation" in log and "-Xic-cache-dir" in log:
+                      evidence.append(record_path.name)
+              assert evidence, f"{variant}: no successful Native IC build reported project static caches"
+              archives = list((run / variant / ".auto-cache").rglob("*.a"))
+              assert archives, f"{variant}: no project static cache archives exist"
+              for archive in archives:
+                  with archive.open("rb") as stream:
+                      assert stream.read(8) == b"!<arch>\n" and archive.stat().st_size > 8, f"Invalid static cache: {archive}"
+              print(f"{variant}: {len(evidence)} IC builds with reported caches; {len(archives)} actual static cache archives")
+          PYTHON
       - name: Upload replay results
         if: always()
         uses: actions/upload-artifact@v6
