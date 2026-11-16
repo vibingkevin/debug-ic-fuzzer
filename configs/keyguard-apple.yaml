@@ -1,0 +1,9 @@
+repository: "https://github.com/AChep/keyguard-app.git"
+branch: "master"
+start_commit: "4def4fa078950035400207f5827982be2df7b254"
+end_commit: "latest"
+direction: forward
+task: ":appleApp:linkDebugFrameworkIosArm64"
+gradle_args:
+  - "--max-workers=1"
+  - "-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8"
