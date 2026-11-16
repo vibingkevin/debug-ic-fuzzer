@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from scripts import watch_actions as monitor
 
 
@@ -54,3 +56,20 @@ def test_successful_rerun_clears_previous_failure(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "latest_runs", lambda *_: [run])
     monkeypatch.setattr(monitor, "pages", lambda *_: [dict(id=22, status="completed", conclusion="success"), dict(id=23, status="completed", conclusion="skipped")])
     assert monitor.poll("owner/repo", "main", tmp_path, {}, {(10, 1, 20)}) == (True, False)
+
+
+@pytest.mark.parametrize("steps", [[], None, [dict(name="Replay", conclusion="cancelled")]])
+def test_cancelled_jobs_record_status_without_retrying_unavailable_logs(monkeypatch, tmp_path, steps):
+    run = dict(id=10, workflow_id=1, run_attempt=1, name="Replay", status="completed", conclusion="cancelled", html_url="run-url")
+    job = dict(id=20, name="page-50", status="completed", conclusion="cancelled", html_url="job-url", steps=steps)
+    monkeypatch.setattr(monitor, "latest_runs", lambda *_: [run])
+    monkeypatch.setattr(monitor, "pages", lambda *_: [job])
+
+    def unexpected_download(*args):
+        pytest.fail("Cancelled jobs should be reported without fetching logs")
+
+    monkeypatch.setattr(monitor, "gh", unexpected_download)
+    reported = set()
+    assert monitor.poll("owner/repo", "main", tmp_path, {}, reported) == (True, True)
+    assert (10, 1, 20) in reported
+    assert json.loads((tmp_path / "latest.json").read_text())["runs"][0]["jobs"][0]["conclusion"] == "cancelled"
