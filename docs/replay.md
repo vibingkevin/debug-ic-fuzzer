@@ -42,7 +42,7 @@ Normalization operates on temporary copies. The original products remain availab
 
 ## Use cache records to explain the result
 
-Cache snapshots show what the compiler reported rebuilding. They do not participate in the automatic equality verdict.
+Cache snapshots show what the compiler reported rebuilding. They do not participate in the automatic equality verdict. A compiler configured with `clean_build: true` keeps Native IC enabled but clears the project `.auto-cache` and `kotlin-native-ic-cache` directories before the link. Distribution stdlib and platformlib caches remain available, and the resulting cache snapshot records the caches rebuilt from that empty project state. When either compiler uses clean mode, both final links execute for every commit; only the incremental side retains project Native cache state between commits.
 
 For an executed link, the tool reads `-Xdump-built-caches-to`. Each reported archive selects its containing cache unit. A per-file cache selects that file’s unit; a monolithic cache selects the whole library. The collector hashes the files in those units, including metadata and IR, without scanning unrelated cache directories.
 

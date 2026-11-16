@@ -16,6 +16,8 @@ def validate_link_result(build_result: dict) -> str | None:
     link = build_result["link"]
     if link is None:
         return "Expected one Native link"
+    if build_result.get("clean_build") and link.get("project_native_caches_empty") is not True:
+        return "Clean Native link did not confirm empty project Native caches"
     if Path(link["home"]).resolve() != Path(build_result["native_home"]):
         return "Actual Native home does not match the configuration"
     output = Path(link["output"])

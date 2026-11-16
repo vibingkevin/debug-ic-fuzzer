@@ -19,7 +19,7 @@ def gradle_init_script_path() -> Path:
     return script_path if script_path.exists() else Path(sys.prefix) / "share/debug-ic-fuzzer/capture.init.gradle"
 
 
-def build_project(project_directory: Path, project_config: Project, compiler_config: Compiler, native_home: Path, record_stem: str) -> dict:
+def build_project(project_directory: Path, project_config: Project, compiler_config: Compiler, native_home: Path, record_stem: str, *, force_link: bool = False) -> dict:
     """Run one Gradle build, then parse and validate its completed log.
 
     Args:
@@ -28,6 +28,7 @@ def build_project(project_directory: Path, project_config: Project, compiler_con
         compiler_config: KGP version and whether an explicit Native home was configured.
         native_home: Resolved Native distribution to verify and, when configured, pass to Gradle.
         record_stem: Filename stem for the Gradle log written beside the project directory.
+        force_link: Execute the final link even when its inputs are unchanged, for clean comparisons.
 
     Returns:
         The build record. The caller
@@ -53,6 +54,10 @@ def build_project(project_directory: Path, project_config: Project, compiler_con
         "-Pkotlin.incremental.native=true",
         "-Pkotlin.internal.compiler.arguments.log.level=warning",
     ]
+    if compiler_config.clean_build:
+        command.append("-Pic.clean.build=true")
+    if force_link or compiler_config.clean_build:
+        command.append("-Pic.force.link=true")
     if compiler_config.kotlin_native_home is not None:
         command.append(f"-Pkotlin.native.home={native_home}")
 
@@ -68,9 +73,21 @@ def build_project(project_directory: Path, project_config: Project, compiler_con
     # Executed tasks have no status suffix; no matching task line means unknown state.
     task_state = (task_states[-1] or "EXECUTED") if task_states else None
     result = dict(
-        command=command, cwd=str(project_directory), kotlin_version=compiler_config.kotlin_version, native_home=str(native_home), exit_code=code, seconds=seconds, task_state=task_state, link=None, log=gradle_log_path.name, error=None
+        command=command,
+        cwd=str(project_directory),
+        kotlin_version=compiler_config.kotlin_version,
+        native_home=str(native_home),
+        clean_build=compiler_config.clean_build,
+        exit_code=code,
+        seconds=seconds,
+        task_state=task_state,
+        link=None,
+        log=gradle_log_path.name,
+        error=None,
     )
     if task_state == "UP-TO-DATE":
+        if compiler_config.clean_build:
+            result["error"] = "Clean Native link must execute for every commit"
         return result
     native_link_reports = [json.loads(line.removeprefix("IC_FUZZER ")) for line in log_text.splitlines() if line.startswith("IC_FUZZER ")]
     result["link"] = native_link_reports[0] if len(native_link_reports) == 1 else None

@@ -4,7 +4,7 @@
 
 Find the commit where two Kotlin/Native incremental builds start producing different output. The tool replays a Git history with a `baseline` compiler and a `sut` (system under test), compares their products after each commit, and records essential info for investigation.
 
-Both compilers keep their own build state as the replay advances. Using the same compiler on both sides checks debug build repeatability of that compiler; using a different `sut` compares a candidate compiler against the baseline. The replay is incremental, not a clean rebuild of every commit. It builds native products and does not run any tests.
+By default, both compilers keep their own build state as the replay advances. Using the same compiler on both sides checks debug build repeatability of that compiler; using a different `sut` compares a candidate compiler against the baseline. Either side can instead perform Native IC links after clearing project-generated cache files. It builds native products and does not run any tests.
 
 ## Run the IC sample
 
@@ -91,6 +91,27 @@ Without `kotlin_native_home`, KGP manages the distribution under the tool’s `.
 | List of archives | Exactly one filename must contain the current host token: `linux-x86_64`, `macos-aarch64`, or `macos-x86_64`. |
 
 Absolute CLI and archive paths are used directly. The tool leaves the project’s inlining options unchanged.
+
+### Compare against a clean Native build
+
+Set `clean_build: true` independently on `baseline`, `sut`, or both in the compiler YAML. It defaults to `false`. For example, compare clean baseline output with incremental SUT output using the same compiler:
+
+```yaml
+compilers:
+  baseline:
+    kotlin_version: "2.4.21"
+    clean_build: true
+  sut:
+    kotlin_version: "2.4.21"
+```
+
+Clean mode currently supports KGP 2.4.x. It keeps Native IC enabled, clears the project `.auto-cache` and `kotlin-native-ic-cache` directories before each final link, and executes that link for every commit. Kotlin/Native distribution caches for stdlib and platform libraries remain available. It preserves KLIB compilation, dependency downloads, and unrelated build state; it does not invoke Gradle `clean`. When either side is clean, both final links execute even for commits that leave Native inputs unchanged, so each commit has products to compare. The incremental side retains its project Native cache state. JSON records include `clean_build`; cache snapshots record what was rebuilt from the empty project cache.
+
+The IC sample workflow runs both incremental-baseline/incremental-SUT and clean-baseline/incremental-SUT comparisons on Linux x64, macOS arm64, and macOS x64. Both modes use the existing byte-comparison verdict and upload separate results. Dependency caches can be restored across modes, but each job uses a distinct save key and no Native IC state is cached.
+
+Clean and cached compilation can produce different normalized binary bytes even with the same compiler and matching application behavior. The existing byte-comparison rules still apply, including stopping on a production difference. A difference between these modes is evidence to investigate, not proof of a functional compiler bug.
+
+Clean mode deliberately does not use `kotlin.native.cacheKind=none` or the `disableNativeCache` DSL: those disable Native IC itself. Instead, the init script removes only project-generated cache directories immediately before the link and records that condition in the `IC_FUZZER` report. The compiler still receives `-Xenable-incremental-compilation`; distribution stdlib and platformlib caches are not removed. This behavior requires revalidation when upgrading KGP beyond 2.4.
 
 ## Investigate a difference
 
