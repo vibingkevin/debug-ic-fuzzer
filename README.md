@@ -59,6 +59,18 @@ gradle_args: []
 
 Both endpoints are included. `latest` resolves to the fetched tip of `branch`. The range follows first-parent history; `reverse` visits the same range backwards, and equal endpoints build just one commit. An endpoint missing from that history is an error. When the upstream history is rewritten, update the configured commit IDs.
 
+To replay a page from the same YAML, add a zero-based offset and a maximum count:
+
+```sh
+.venv/bin/debug-ic-fuzzer --compilers configs/compilers-2.4.21-9267.yaml --project configs/confetti.yaml --start-at 50 --commit-count 50
+```
+
+Paging applies after selecting the YAML range and its `direction`. With no paging options, the full range is replayed. Omit `--commit-count` to replay everything from `--start-at`; the last page may be shorter than the requested count. Negative offsets, nonpositive counts, and offsets selecting no commits return exit code 2. Each run writes its actual ordered commit SHAs and page bounds to `range.json`; result filenames use page-local indices.
+
+Each page starts with independent baseline/sut build state at its first selected commit. It retains incremental state within the page and does not replay the preceding commits, so separate pages do not cover incremental transitions across page boundaries. For append-only upstream history, new commits extend the last page until it fills; a later run needs another page after that. History rewrites can change page membership.
+
+The manually dispatched [Confetti workflow](.github/workflows/confetti.yml) runs offsets 0 through 350 in groups of 50 using the same YAML. An extra guard page at offset 400 must report an empty range. If it finds commits, the workflow fails to request another normal page and a new guard offset. Only the specific empty-range error is accepted by the guard; build and setup failures still fail CI. Every job resolves `latest` independently and uploads its resolved `range.json`.
+
 Use `gradle_args` for project properties and extra init scripts. `{config_dir}` expands to the project YAML’s directory, so an init-script argument can be written as `{config_dir}/project.init.gradle`.
 
 The supplied [Animeko configuration](configs/animeko-openani.yaml) demonstrates project-specific setup and Apple linker workarounds. The [Workbench configuration](configs/workbench-ohos.yaml) targets OHOS and lists its SDK, toolchain, and host requirements. These projects need their own build prerequisites in addition to the fuzzer’s dependencies.
