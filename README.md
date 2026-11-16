@@ -115,7 +115,7 @@ Absolute CLI and archive paths are used directly. The tool leaves the project’
 
 ## Development
 
-To monitor the latest run of each active workflow on `main`, authenticate the GitHub CLI and run `python3 scripts/watch_actions.py`. It checks every minute, reports failed matrix jobs as soon as they finish, and saves a status snapshot and failure logs under `.actions-monitor/`. It exits after all latest runs finish (0 for success, 1 for failures, 2 for an initial API error); use `--once` for one check or `--watch` to keep following new runs. The script only observes runs; fixes and reruns require inspecting the saved evidence.
+To monitor the latest run of each active workflow on `main`, authenticate the GitHub CLI and run `python3 scripts/watch_actions.py`. It checks every minute, reports failed matrix jobs as soon as they finish, and saves a status snapshot and failure logs under `.actions-monitor/`. Cancelled jobs remain in the snapshot but do not trigger log downloads. It exits after all latest runs finish (0 for success, 1 for failures, 2 for an initial API error); use `--once` for one check or `--watch` to keep following new runs. The script only observes runs; fixes and reruns require inspecting the saved evidence.
 
 ```sh
 .venv/bin/python -m pip install -e '.[test,format]'

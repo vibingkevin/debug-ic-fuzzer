@@ -58,15 +58,15 @@ def test_successful_rerun_clears_previous_failure(monkeypatch, tmp_path):
     assert monitor.poll("owner/repo", "main", tmp_path, {}, {(10, 1, 20)}) == (True, False)
 
 
-@pytest.mark.parametrize("steps", [[], None])
-def test_cancelled_job_without_steps_does_not_download_nonexistent_logs(monkeypatch, tmp_path, steps):
+@pytest.mark.parametrize("steps", [[], None, [dict(name="Replay", conclusion="cancelled")]])
+def test_cancelled_jobs_record_status_without_retrying_unavailable_logs(monkeypatch, tmp_path, steps):
     run = dict(id=10, workflow_id=1, run_attempt=1, name="Replay", status="completed", conclusion="cancelled", html_url="run-url")
     job = dict(id=20, name="page-50", status="completed", conclusion="cancelled", html_url="job-url", steps=steps)
     monkeypatch.setattr(monitor, "latest_runs", lambda *_: [run])
     monkeypatch.setattr(monitor, "pages", lambda *_: [job])
 
     def unexpected_download(*args):
-        pytest.fail("Cancelled jobs that never started do not have logs")
+        pytest.fail("Cancelled jobs should be reported without fetching logs")
 
     monkeypatch.setattr(monitor, "gh", unexpected_download)
     reported = set()
