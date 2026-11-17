@@ -1,0 +1,6 @@
+repository: "https://github.com/serbelga/Todometer-KMP.git"
+branch: "main"
+start_commit: "7bbdb76a01008d4b99d8749cb0eca5c9b23e3142"
+end_commit: "latest"
+direction: forward
+task: ":app:shared:linkDebugFrameworkIosSimulatorArm64"
