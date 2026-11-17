@@ -10,8 +10,14 @@ on:
   pull_request:
     branches: [ main ]
     paths:
-      - '**'
-      - '!**/*.md'
+      - 'debug_ic_fuzzer.py'
+      - 'impl/**'
+      - 'tests/**'
+      - 'configs/ic-sample-*.yaml'
+      - 'configs/compilers-2.4.21-9267.yaml'
+      - 'capture.init.gradle'
+      - 'pyproject.toml'
+      - '.github/workflows/ic-sample.yml'
 
 permissions:
   contents: read
