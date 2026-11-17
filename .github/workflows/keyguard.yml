@@ -23,7 +23,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ github.event_name == 'pull_request' && fromJSON('[{"project":"keyguard-ios","start_at":0},{"project":"keyguard-apple","start_at":0}]') || fromJSON('[{"project":"keyguard-ios","start_at":0},{"project":"keyguard-ios","start_at":50},{"project":"keyguard-ios","start_at":100},{"project":"keyguard-ios","start_at":150},{"project":"keyguard-ios","start_at":200},{"project":"keyguard-ios","start_at":250},{"project":"keyguard-ios","start_at":300},{"project":"keyguard-ios","start_at":350},{"project":"keyguard-ios","start_at":400},{"project":"keyguard-ios","start_at":450},{"project":"keyguard-apple","start_at":0},{"project":"keyguard-apple","start_at":50},{"project":"keyguard-apple","start_at":100},{"project":"keyguard-apple","start_at":150},{"project":"keyguard-apple","start_at":200},{"project":"keyguard-apple","start_at":250},{"project":"keyguard-apple","start_at":300},{"project":"keyguard-apple","start_at":350},{"project":"keyguard-apple","start_at":400,"guard":"true"}]') }}
+        include:
+          - { project: keyguard-ios, start_at: 0 }
+          - { project: keyguard-ios, start_at: 50 }
+          - { project: keyguard-ios, start_at: 100 }
+          - { project: keyguard-ios, start_at: 150 }
+          - { project: keyguard-ios, start_at: 200 }
+          - { project: keyguard-ios, start_at: 250 }
+          - { project: keyguard-ios, start_at: 300 }
+          - { project: keyguard-ios, start_at: 350 }
+          - { project: keyguard-ios, start_at: 400 }
+          - { project: keyguard-ios, start_at: 450 }
+          - { project: keyguard-apple, start_at: 0 }
+          - { project: keyguard-apple, start_at: 50 }
+          - { project: keyguard-apple, start_at: 100 }
+          - { project: keyguard-apple, start_at: 150 }
+          - { project: keyguard-apple, start_at: 200 }
+          - { project: keyguard-apple, start_at: 250 }
+          - { project: keyguard-apple, start_at: 300 }
+          - { project: keyguard-apple, start_at: 350 }
+          - { project: keyguard-apple, start_at: 400, guard: true }
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
       PYTHONDONTWRITEBYTECODE: '1'
