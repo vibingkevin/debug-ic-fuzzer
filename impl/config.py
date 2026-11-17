@@ -20,6 +20,7 @@ class Config(BaseModel):
 class Compiler(Config):
     kotlin_version: str
     kotlin_native_home: Path | list[Path] | None = None
+    clean_build: bool = Field(default=False, strict=True)
 
 
 class Compilers(Config):

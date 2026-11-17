@@ -7,16 +7,29 @@ class ClearNativeTemporaryFiles implements Action<Task>, Serializable {
     }
 }
 
+class ClearProjectNativeCaches implements Action<Task>, Serializable {
+    List<String> directories
+    void execute(Task task) {
+        directories.each {
+            def directory = new File(it)
+            directory.deleteDir()
+            directory.mkdirs()
+        }
+    }
+}
+
 // Store only values so the action can run after Configuration Cache restoration.
 class ReportNativeLink implements Action<Task>, Serializable {
     String version
     String builtCaches
+    boolean projectNativeCachesEmpty
     void execute(Task task) {
-        new File(builtCaches).delete()
+        if (builtCaches != null) new File(builtCaches).delete()
         task.logger.lifecycle('IC_FUZZER ' + JsonOutput.toJson([
             task: task.path, kotlin_version: version,
             home: new File(task.konanHome.get()).canonicalPath,
-            output: task.outputFile.get().absolutePath, built_caches: builtCaches
+            output: task.outputFile.get().absolutePath, built_caches: builtCaches,
+            project_native_caches_empty: projectNativeCachesEmpty
         ]))
     }
 }
@@ -41,16 +54,26 @@ gradle.projectsEvaluated {
     def plugin = task.project.plugins.findPlugin('org.jetbrains.kotlin.multiplatform')
     def actual = plugin.class.classLoader.loadClass('org.jetbrains.kotlin.config.KotlinCompilerVersion').getField('VERSION').get(null)
     if (actual != version) throw new GradleException("Actual KGP version ${actual} does not match configured version ${version}")
-    // Disable Build Cache only for the final link; preserve Configuration Cache, UP-TO-DATE, and dependency caching.
+    def cleanBuild = gradle.startParameter.projectProperties['ic.clean.build'] == 'true'
+    if (cleanBuild) {
+        if (!version.startsWith('2.4.')) throw new GradleException('Clean Native builds currently require Kotlin 2.4.x')
+        // Keep Native IC enabled, but remove project-generated caches before each link.
+        task.outputs.upToDateWhen { false }
+    } else if (gradle.startParameter.projectProperties['ic.force.link'] == 'true') {
+        task.outputs.upToDateWhen { false }
+    }
+    // Disable Build Cache only for the final link; preserve Configuration Cache and dependency caching.
     task.outputs.doNotCacheIf('Native IC must execute instead of restoring a cached link output') { true }
     def builtCaches = new File(task.temporaryDir, 'built-caches.txt').absolutePath
     def temporaryFiles = new File(gradle.rootProject.projectDir, '.tmp').absolutePath
     def autoCacheDir = gradle.startParameter.projectProperties['ic.auto.cache.dir']
     task.toolOptions.freeCompilerArgs.set(task.toolOptions.freeCompilerArgs.get().findAll { !it.startsWith('-Xauto-cache-dir=') && !it.startsWith('-Xtemporary-files-dir=') })
     task.toolOptions.freeCompilerArgs.add("-Xauto-cache-dir=${autoCacheDir}".toString())
-    task.toolOptions.freeCompilerArgs.add("-Xtemporary-files-dir=${temporaryFiles}".toString())
     task.toolOptions.freeCompilerArgs.add("-Xdump-built-caches-to=${builtCaches}".toString())
-    task.doFirst(new ReportNativeLink(version: version, builtCaches: builtCaches))
+    task.toolOptions.freeCompilerArgs.add("-Xtemporary-files-dir=${temporaryFiles}".toString())
+    def incrementalCacheDir = task.project.layout.buildDirectory.get().asFile.toPath().resolve('kotlin-native-ic-cache').toFile().absolutePath
+    task.doFirst(new ReportNativeLink(version: version, builtCaches: builtCaches, projectNativeCachesEmpty: cleanBuild))
+    if (cleanBuild) task.doFirst(new ClearProjectNativeCaches(directories: [autoCacheDir, incrementalCacheDir]))
     // Explicit temporary directories are preserved by konanc; clear them before actual links.
     task.doFirst(new ClearNativeTemporaryFiles(directory: temporaryFiles))
 }

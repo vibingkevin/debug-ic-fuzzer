@@ -22,21 +22,26 @@ concurrency:
 
 jobs:
   replay:
-    name: ${{ matrix.name }}
+    name: ${{ matrix.platform }} / baseline-${{ matrix.baseline }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        platform: [linux-x64, macos-arm64, macos-x64]
+        baseline: [incremental, clean]
         include:
-          - name: linux-x64
+          - platform: linux-x64
             os: ubuntu-24.04
             project: configs/ic-sample-linux.yaml
-          - name: macos-arm64
-            os: macos-15
+            compilers: configs/compilers-2.4.21-9267.yaml
+          - platform: macos-arm64
+            os: macos-latest
             project: configs/ic-sample-ios.yaml
-          - name: macos-x64
+            compilers: configs/compilers-2.4.21-9267.yaml
+          - platform: macos-x64
             os: macos-15-intel
             project: configs/ic-sample-ios.yaml
+            compilers: configs/compilers-2.4.21-9267.yaml
     env:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
@@ -57,6 +62,22 @@ jobs:
       - name: Install ELF tools
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y llvm
+      - name: Configure compiler build modes
+        env:
+          COMPILERS_CONFIG: ${{ matrix.compilers }}
+          BASELINE_MODE: ${{ matrix.baseline }}
+        run: |
+          .venv/bin/python - <<'PY'
+          import os
+          from pathlib import Path
+          import yaml
+
+          source = Path(os.environ['COMPILERS_CONFIG'])
+          config = yaml.safe_load(source.read_text())
+          config['compilers']['baseline']['clean_build'] = os.environ['BASELINE_MODE'] == 'clean'
+          config['compilers']['sut']['clean_build'] = False
+          source.with_name('ci-compilers.yaml').write_text(yaml.safe_dump(config))
+          PY
       - name: Restore reusable build caches
         id: build-cache
         uses: actions/cache/restore@v5
@@ -68,14 +89,14 @@ jobs:
             !.gradle-home/caches/**/.auto-cache/**
             !.gradle-home/caches/**/kotlin-native-ic-cache/**
             !.gradle-home/caches/**/*.lock
-          key: ic-dependencies-v2-${{ matrix.name }}-${{ hashFiles('configs/compilers*.yaml', 'configs/ic-sample-*.yaml') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ic-dependencies-v2-${{ matrix.platform }}-${{ hashFiles('configs/compilers*.yaml', 'configs/ic-sample-*.yaml') }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.baseline }}
           restore-keys: |
-            ic-dependencies-v2-${{ matrix.name }}-${{ hashFiles('configs/compilers*.yaml', 'configs/ic-sample-*.yaml') }}-
-            ic-dependencies-v2-${{ matrix.name }}-
+            ic-dependencies-v2-${{ matrix.platform }}-${{ hashFiles('configs/compilers*.yaml', 'configs/ic-sample-*.yaml') }}-
+            ic-dependencies-v2-${{ matrix.platform }}-
       - name: Run unit tests
         run: .venv/bin/python -m pytest -q
       - name: Replay IC sample
-        run: .venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project ${{ matrix.project }}
+        run: .venv/bin/python -u debug_ic_fuzzer.py --compilers configs/ci-compilers.yaml --project ${{ matrix.project }}
       - name: Save reusable build caches
         if: ${{ always() && steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
@@ -92,7 +113,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: ic-sample-${{ matrix.name }}
+          name: ic-sample-${{ matrix.platform }}-baseline-${{ matrix.baseline }}
           retention-days: 3
           path: |
             run/*/*.json
