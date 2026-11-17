@@ -72,7 +72,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           archive=kotlin-native-prebuilt-macos-aarch64-2.4.21-9267.tar.gz
-          gh release download compiler-2.4.21-9267 --repo vibingkevin/debug-ic-fuzzer-validation --pattern "$archive" --dir compilers --clobber
+          gh release download compiler-2.4.21-9267 --repo vibingkevin/debug-ic-fuzzer --pattern "$archive" --dir compilers --clobber
           printf '%s  %s\n' c59d73272d932b865f48d8187e6cca40694dfdbd30e46a776056680fd339bf2e "compilers/$archive" | shasum -a 256 -c -
       - name: Restore reusable Swift snapshot package
         id: swift-package-cache

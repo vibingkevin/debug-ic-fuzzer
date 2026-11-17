@@ -40,7 +40,7 @@ jobs:
         run: |
           archive=kotlin-native-prebuilt-macos-aarch64-2.4.21-9267.tar.gz
           for attempt in 1 2 3; do
-            if gh release download compiler-2.4.21-9267 --repo vibingkevin/debug-ic-fuzzer-validation --pattern "$archive" --dir compilers --clobber; then
+            if gh release download compiler-2.4.21-9267 --repo vibingkevin/debug-ic-fuzzer --pattern "$archive" --dir compilers --clobber; then
               break
             fi
             rm -f "compilers/$archive"
