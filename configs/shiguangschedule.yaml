@@ -1,0 +1,6 @@
+repository: "https://github.com/ShiGuangSchedule/shiguangschedule.git"
+branch: "main"
+start_commit: "abfd34a4e5ab9282156df1b015792893342a1a52"
+end_commit: "latest"
+direction: forward
+task: ":shared:linkDebugFrameworkIosSimulatorArm64"
