@@ -1,0 +1,6 @@
+repository: "https://github.com/SimonSchubert/LinuxCommandLibrary.git"
+branch: "master"
+start_commit: "11128bbbe41260bce70319f234ac2dbd54ea23ad"
+end_commit: "latest"
+direction: forward
+task: ":common:linkDebugFrameworkIosArm64"
