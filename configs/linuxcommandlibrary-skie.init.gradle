@@ -1,0 +1,8 @@
+// The early 2.4 commits pin SKIE 0.10.13, which rejects Kotlin 2.4.21.
+// Override it to 0.10.16, the release that supports Kotlin 2.4.21.
+gradle.settingsEvaluated { settings ->
+    settings.dependencyResolutionManagement.versionCatalogs.configureEach { it.version('skie', '0.10.16') }
+    settings.pluginManagement.resolutionStrategy.eachPlugin {
+        if (requested.id.id == 'co.touchlab.skie') useVersion('0.10.16')
+    }
+}
