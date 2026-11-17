@@ -101,7 +101,10 @@ jobs:
           fi
           swiftc_path="$(xcrun --no-cache --toolchain "$toolchain_id" --find swiftc)"
           swift_bin_dir="$(dirname "$swiftc_path")"
-          sudo cp "$(xcrun --no-cache --toolchain XcodeDefault --find ld)" "$swift_bin_dir/ld"
+          default_ld="$(xcrun --no-cache --toolchain XcodeDefault --find ld)"
+          if [ "$default_ld" != "$swift_bin_dir/ld" ]; then
+            sudo cp "$default_ld" "$swift_bin_dir/ld"
+          fi
           echo "TOOLCHAINS=$toolchain_id" >> "$GITHUB_ENV"
           echo "PATH=$swift_bin_dir:$PATH" >> "$GITHUB_ENV"
           test "$(xcrun --no-cache --toolchain "$toolchain_id" --find ld)" = "$swift_bin_dir/ld"
