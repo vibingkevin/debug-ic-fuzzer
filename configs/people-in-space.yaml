@@ -4,4 +4,4 @@ branch: "main"
 start_commit: "d70f3d767dc2f404f7e5eaad276dad94232bcf41"
 end_commit: "3a10b125dcd0e62335e70e64b2204ccd4d356079"
 direction: forward
-task: ":common:linkDebugFrameworkIosSimulatorArm64"
+task: ":common:linkDebugFrameworkIosArm64"
