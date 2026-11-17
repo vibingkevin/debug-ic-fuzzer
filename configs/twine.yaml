@@ -1,0 +1,6 @@
+repository: "https://github.com/msasikanth/twine.git"
+branch: "main"
+start_commit: "07782d3c918592e86bdbf5e1d07c2aa3cf590ecf"
+end_commit: "latest"
+direction: forward
+task: ":shared:linkDebugFrameworkIosArm64"
