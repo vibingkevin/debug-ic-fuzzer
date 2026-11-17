@@ -114,7 +114,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ic-sample-${{ matrix.platform }}-baseline-${{ matrix.baseline }}
-          retention-days: 3
+          retention-days: 8
           path: |
             run/*/*.json
             run/*/*.csv

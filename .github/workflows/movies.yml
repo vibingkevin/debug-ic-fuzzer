@@ -116,7 +116,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: movies-${{ matrix.start_at }}
-          retention-days: 7
+          retention-days: 8
           path: |
             run/*/*.json
             run/*/*.csv

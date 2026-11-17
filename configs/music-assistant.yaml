@@ -3,4 +3,4 @@ branch: "main"
 start_commit: "1d9d238584227eda3887cd03ccefa6eef233a27f"
 end_commit: "latest"
 direction: forward
-task: ":composeApp:linkDebugFrameworkIosSimulatorArm64"
+task: ":composeApp:linkDebugFrameworkIosArm64"

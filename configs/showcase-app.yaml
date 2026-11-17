@@ -3,7 +3,7 @@ branch: "main"
 start_commit: "80f1c21715fe32fd89b2f5a7ea67614e62369334"
 end_commit: "latest"
 direction: forward
-task: ":composeApp:linkDebugFrameworkIosSimulatorArm64"
+task: ":composeApp:linkDebugFrameworkIosArm64"
 gradle_args:
   - "-Pshowcase.tvos=false"
   - "-I"

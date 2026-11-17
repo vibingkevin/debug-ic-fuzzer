@@ -30,7 +30,7 @@ gradle.beforeProject { project ->
 gradle.beforeProject { project ->
     if (project.path == ':local-face-detection') {
         project.tasks.withType(org.gradle.api.tasks.Exec).configureEach { task ->
-            if (task.name == 'buildFaceDetectionIosSimulatorArm64') {
+            if (task.name == 'buildFaceDetectionIosArm64') {
                 task.doFirst {
                     def archivePath = System.getenv('SHOWCASE_OPENCV_ARCHIVE')
                     if (!archivePath) throw new GradleException('SHOWCASE_OPENCV_ARCHIVE is required')
