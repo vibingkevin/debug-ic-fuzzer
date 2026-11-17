@@ -2,6 +2,12 @@ name: Keyguard
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/keyguard.yml'
+      - 'configs/keyguard-ios.yaml'
+      - 'configs/keyguard-apple.yaml'
+      - 'configs/compilers-2.4.21-9267.yaml'
 
 permissions:
   contents: read
@@ -12,6 +18,7 @@ concurrency:
 
 jobs:
   replay:
+    if: github.event_name != 'pull_request' || matrix.start_at == 0
     name: ${{ matrix.project }}-${{ matrix.start_at }}${{ matrix.guard && '-guard' || '' }}
     runs-on: macos-latest
     strategy:

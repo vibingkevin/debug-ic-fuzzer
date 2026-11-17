@@ -2,6 +2,12 @@ name: FeedFlow
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/feed-flow.yml'
+      - 'configs/feed-flow.yaml'
+      - 'configs/feed-flow-skie.init.gradle'
+      - 'configs/compilers-2.4.21-9267.yaml'
 
 permissions:
   contents: read
@@ -12,6 +18,7 @@ concurrency:
 
 jobs:
   replay:
+    if: github.event_name != 'pull_request' || matrix.start_at == 0
     name: commits-${{ matrix.start_at }}${{ matrix.guard && '-guard' || '' }}
     runs-on: macos-26
     strategy:

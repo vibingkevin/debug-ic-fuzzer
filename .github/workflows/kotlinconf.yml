@@ -2,6 +2,11 @@ name: KotlinConf
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/kotlinconf.yml'
+      - 'configs/kotlinconf-app.yaml'
+      - 'configs/compilers-2.4.21-9267.yaml'
 
 permissions:
   contents: read
