@@ -23,8 +23,9 @@ jobs:
       matrix:
         include:
           - start_at: 0
-          - start_at: 100
-          - start_at: 200
+          - start_at: 40
+          - start_at: 80
+          - start_at: 120
             guard: true
     env:
       PYTHONDONTWRITEBYTECODE: '1'
