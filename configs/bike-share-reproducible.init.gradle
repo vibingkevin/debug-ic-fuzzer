@@ -1,0 +1,12 @@
+// Stabilizes the ld-prime Objective-C stub GOT ordering issue (issues/smallstub/).
+// Verified on the BikeShare 2.4 range: the two incremental builds of commit 00af7f6a
+// differ only in GOT offsets (ldr x8, [x8, #0xb30] vs #0xb28), i.e. the two equal-name
+// _objc_msgSend GOT atoms swapped. -objc_stubs_small reuses the ordinary message-send
+// stub and removes the racing second atom.
+gradle.projectsEvaluated {
+    if (gradle.parent != null) return
+    def task = gradle.rootProject.tasks.getByPath(':common:linkDebugFrameworkIosSimulatorArm64')
+    task.toolOptions.freeCompilerArgs.addAll([
+        '-linker-option', '-objc_stubs_small'
+    ])
+}
