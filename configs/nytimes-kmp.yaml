@@ -1,0 +1,6 @@
+repository: "https://github.com/xxfast/NYTimes-KMP.git"
+branch: "main"
+start_commit: "99ce0786d20189e61fae911cde80b318f5873cab"
+end_commit: "latest"
+direction: forward
+task: ":app:compose:linkDebugFrameworkIosSimulatorArm64"
