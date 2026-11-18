@@ -1,0 +1,30 @@
+// PeopleInSpace's early 2.4 commits pin SKIE 0.10.13 and koin-compiler-plugin 1.0.2.
+// SKIE 0.10.13 rejects Kotlin 2.4.21 outright; koin 1.0.2 crashes in IR generation
+// (getValueArgument) on 2.4.21. Override both to the releases that support it, and
+// turn off Koin's compile-time dependency verification: these early revisions do not
+// yet wire the iOS DI graph (KOIN-D001 on HttpClientEngine / database wrapper), which
+// has nothing to do with the incremental-compilation comparisons this tool performs.
+gradle.settingsEvaluated { settings ->
+    settings.dependencyResolutionManagement.versionCatalogs.configureEach {
+        it.version('skie', '0.10.16')
+        it.version('koin-compiler-plugin', '1.2.3')
+    }
+    settings.pluginManagement.resolutionStrategy.eachPlugin {
+        if (requested.id.id == 'co.touchlab.skie') useVersion('0.10.16')
+        if (requested.id.id == 'io.insert-koin.compiler.plugin') useVersion('1.2.3')
+    }
+}
+
+gradle.projectsEvaluated {
+    if (gradle.parent != null) return
+    gradle.rootProject.allprojects { project ->
+        project.tasks.matching { it.name.startsWith('compileKotlin') }.configureEach { task ->
+            if (task.hasProperty('compilerOptions')) {
+                task.compilerOptions.freeCompilerArgs.addAll([
+                    '-P', 'plugin:io.insert-koin.compiler.plugin:koin.compileSafety=false',
+                    '-P', 'plugin:io.insert-koin.compiler.plugin:koin.unsafeDslChecks=false'
+                ])
+            }
+        }
+    }
+}
