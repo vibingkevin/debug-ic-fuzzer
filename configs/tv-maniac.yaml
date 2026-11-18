@@ -1,0 +1,8 @@
+repository: "https://github.com/thomaskioko/tv-maniac.git"
+branch: "main"
+start_commit: "239596e8cd"
+end_commit: "latest"
+direction: forward
+task: ":ios-framework:linkDebugFrameworkIosSimulatorArm64"
+gradle_args:
+  - "-Papp.enableIos=true"
