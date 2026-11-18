@@ -1,7 +1,12 @@
-# PeopleInSpace's Kotlin 2.4.x range ends before the Kotlin 2.5.0-Beta2 update.
+# PeopleInSpace's Kotlin 2.4 range. The first 48 commits (592c067..7a101ee) pin
+# SKIE 0.10.13 + koin-compiler-plugin 1.0.2, which do not work on Kotlin 2.4.21;
+# 7a101ee updates both (SKIE 0.10.15 / koin 1.2.1) and builds cleanly from there.
 repository: "https://github.com/joreilly/PeopleInSpace.git"
 branch: "main"
-start_commit: "592c067d76c9e3412cb2fb774bfc81f1cc2dcfbe"
-end_commit: "3a10b125dcd0e62335e70e64b2204ccd4d356079"
+start_commit: "7a101ee"
+end_commit: "latest"
 direction: forward
 task: ":common:linkDebugFrameworkIosSimulatorArm64"
+gradle_args:
+  - "-I"
+  - "{config_dir}/people-in-space-skie.init.gradle"
