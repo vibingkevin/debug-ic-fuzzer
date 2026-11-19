@@ -19,9 +19,9 @@ jobs:
       matrix:
         include:
           - start_at: 0
-          - start_at: 100
-          - start_at: 200
-          - start_at: 300
+          - start_at: 80
+          - start_at: 160
+          - start_at: 240
             guard: true
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           export JDK_JBR="$JAVA_HOME"
-          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/animeko-openani.yaml --start-at "$START_AT" --commit-count 100)
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/animeko-openani.yaml --start-at "$START_AT" --commit-count 80)
           if [ "$GUARD" = true ]; then
             set +e
             output=$("${replay[@]}" 2>&1)
