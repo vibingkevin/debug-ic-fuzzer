@@ -263,7 +263,7 @@ sys.exit(7 if home.endswith('fail') else 0)
         "both-clean",
     ],
 )
-def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
+def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure, capsys):
     """Verify replay order and stopping with fake builds writing records under tmp_path.
 
     monkeypatch replaces external operations; failure selects the injected error/difference,
@@ -350,10 +350,10 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
     monkeypatch.setattr(runner, "save_product_contents", lambda *_: None)
     monkeypatch.setattr("impl.comparison.save_product_contents", lambda results: saved.append(results))
     monkeypatch.setattr(runner, "compare_products", fake_compare_products)
-    succeeds = failure in (None, "debug", "both-up-to-date", "both-failed", "both-failed-collection", "all-failed", "baseline-clean", "sut-clean", "both-clean")
+    succeeds = failure in (None, "debug", "both-up-to-date", "both-failed", "both-failed-collection", "baseline-clean", "sut-clean", "both-clean")
     assert replay_commits(Path("compilers.yaml"), Path("project.yaml")) == int(not succeeds)
     assert created == [("baseline", "a"), ("sut", "a")]
-    revisions = ["a", "b", "c"] if succeeds or failure == "both-failed-then-diff" else ["a", "b"]
+    revisions = ["a", "b", "c"] if succeeds or failure in ("all-failed", "both-failed-then-diff") else ["a", "b"]
     assert calls == [(sha, name) for sha in revisions for name in ("baseline", "sut")]
     (run_directory,) = (tmp_path / "run").iterdir()
     assert len(list(run_directory.glob("*.json"))) == len(calls) + len(revisions) + 1
@@ -382,6 +382,12 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure):
             else:
                 assert (sha, name) in collected
             assert (run_directory / f"{record_name}.gradle.log").is_file()
+    successful = both_failed_count = 0
+    for sha in revisions:
+        results = [json.loads((run_directory / f"{revisions.index(sha):04d}-{sha}-{name}.json").read_text()) for name in ("baseline", "sut")]
+        successful += int(all(result["exit_code"] == 0 and result["error"] is None for result in results))
+        both_failed_count += int(all(result["exit_code"] != 0 for result in results))
+    assert capsys.readouterr().out.splitlines()[-1] == f"Successful builds (baseline + sut): {successful}/3 commits; both failed: {both_failed_count}."
     if failure in ("both-up-to-date", "baseline-up-to-date", "sut-up-to-date"):
         comparison = json.loads((run_directory / "0001-b-comparison.json").read_text())
         if failure == "both-up-to-date":

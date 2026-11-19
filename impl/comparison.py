@@ -46,9 +46,10 @@ def compute_production_md5(product_path: Path, scratch_directory: Path) -> str |
 
     product_path is the product file; scratch_directory holds temporary normalized binaries.
     Strip ELF debug data/build ID or normalize Mach-O binaries/archives. Normalize headers as text;
-    hash other files unchanged. Return None for dSYM files, which are debug-only artifacts.
+    hash other files unchanged. Return None for dSYM and Swift source-info files, which are debug-only artifacts.
     """
-    if any(parent.suffix == ".dSYM" for parent in product_path.parents):
+    # Swift source-info contains source locations and modification timestamps, not executable/API content.
+    if product_path.suffix == ".swiftsourceinfo" or any(parent.suffix == ".dSYM" for parent in product_path.parents):
         return None
     if product_path.suffix == ".h":
         return hashlib.md5(normalize_text_content(product_path.read_bytes(), product_path.name)).hexdigest()

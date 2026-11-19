@@ -1,0 +1,21 @@
+// BuildKonfig needs a nonempty API key even when only compiling the framework.
+gradle.settingsEvaluated { settings ->
+    def properties = new File(settings.settingsDir, 'local.properties')
+    if (!properties.exists()) properties.text = 'apiKey=ic-fuzzer-build-only\n'
+    // Keep historical SKIE versions compatible with Kotlin 2.4.21.
+    settings.dependencyResolutionManagement.versionCatalogs.configureEach { it.version('skie', '0.10.16') }
+    settings.pluginManagement.resolutionStrategy.eachPlugin {
+        if (requested.id.id == 'co.touchlab.skie') useVersion('0.10.16')
+    }
+}
+
+// Stabilize ld-prime provider selection and duplicate objc_msgSend GOT atoms (issues/chkstk/, issues/smallstub/).
+gradle.projectsEvaluated {
+    if (gradle.parent != null) return
+    def task = gradle.rootProject.tasks.getByPath(':app:compose:linkDebugFrameworkIosArm64')
+    task.toolOptions.freeCompilerArgs.addAll([
+        '-Xoverride-konan-properties=linkerKonanFlags.ios_arm64=-lc++ -lobjc -framework Foundation -framework UIKit',
+        '-linker-option', '-lSystem',
+        '-linker-option', '-objc_stubs_small'
+    ])
+}
