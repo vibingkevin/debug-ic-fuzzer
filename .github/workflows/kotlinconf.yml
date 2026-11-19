@@ -1,13 +1,7 @@
 name: KotlinConf
-run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / KotlinConf
 
 on:
   workflow_dispatch:
-    inputs:
-      scheduled:
-        description: Triggered by replay rotation
-        type: boolean
-        default: false
 
 permissions:
   contents: read

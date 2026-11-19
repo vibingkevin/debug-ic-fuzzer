@@ -61,6 +61,7 @@ def test_rotate_dispatches_once_or_skips_busy_repository(tmp_path, monkeypatch, 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("GITHUB_REPOSITORY", REPOSITORY)
     (tmp_path / "README.md").write_text(badge("a.yml") + "\n" + badge("b.yml"))
+    monkeypatch.setattr(rotation, "scheduled_projects", lambda workflows: workflows)
     posted = []
 
     def api(endpoint, data=None):
@@ -99,11 +100,34 @@ def test_api_authenticates_and_posts_boolean_input(monkeypatch):
     assert rotation.api("actions/workflows/a.yml/dispatches", {"ref": "main", "inputs": {"scheduled": True}}) is None
 
 
-def test_registered_workflows_support_rotation():
+def test_scheduled_projects_skip_workflows_without_opt_in(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    directory = tmp_path / ".github/workflows"
+    directory.mkdir(parents=True)
+    (directory / "ready.yml").write_text("on:\n  workflow_dispatch:\n    inputs:\n      scheduled:\n        type: boolean\n")
+    (directory / "later.yml").write_text("on:\n  workflow_dispatch:\n")
+    assert rotation.scheduled_projects(["later.yml", "ready.yml"]) == ["ready.yml"]
+
+
+def test_rotation_without_enabled_projects_does_not_dispatch(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GITHUB_REPOSITORY", REPOSITORY)
+    (tmp_path / "README.md").write_text(badge("a.yml"))
+    monkeypatch.setattr(rotation, "workflow_runs", lambda **filters: iter([]))
+    monkeypatch.setattr(rotation, "scheduled_projects", lambda workflows: [])
+    monkeypatch.setattr(rotation, "api", lambda *args: pytest.fail("must not dispatch"))
+    rotation.rotate()
+    assert "no project has enabled" in capsys.readouterr().out
+
+
+def test_registered_workflows_support_rotation(monkeypatch):
+    monkeypatch.chdir(ROOT)
     readme = (ROOT / "README.md").read_text()
     workflows = rotation.projects(readme, REPOSITORY)
     assert set(workflows) == {path.name for path in (ROOT / ".github/workflows").glob("*.yml") if path.name != "replay-rotation.yml"}
-    for workflow in workflows:
+    enabled = rotation.scheduled_projects(workflows)
+    assert enabled
+    for workflow in enabled:
         config = yaml.load((ROOT / ".github/workflows" / workflow).read_text(), Loader=yaml.BaseLoader)
         scheduled = config["on"]["workflow_dispatch"]["inputs"]["scheduled"]
         assert scheduled["type"] == "boolean" and scheduled["default"] == "false"

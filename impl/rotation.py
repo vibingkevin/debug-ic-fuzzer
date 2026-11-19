@@ -7,6 +7,8 @@ import re
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+import yaml
+
 
 def projects(readme: str, repository: str) -> list[str]:
     """Read this repository's workflow badges in their displayed order."""
@@ -15,6 +17,17 @@ def projects(readme: str, repository: str) -> list[str]:
     if not workflows:
         raise ValueError("README has no project workflow badges")
     return workflows
+
+
+def scheduled_projects(workflows: list[str]) -> list[str]:
+    """Skip projects until their workflow opts into scheduled dispatches."""
+    enabled = []
+    for workflow in workflows:
+        config = yaml.load(Path(".github/workflows", workflow).read_text(), Loader=yaml.BaseLoader)
+        dispatch = config["on"].get("workflow_dispatch") or {}
+        if "scheduled" in dispatch.get("inputs", {}):
+            enabled.append(workflow)
+    return enabled
 
 
 def next_project(workflows: list[str], runs) -> str:
@@ -57,6 +70,10 @@ def rotate(*, dry_run=False):
             if run["path"] in paths:
                 print(f"Skipping rotation: {run['html_url']} is {run['status']}.")
                 return
+    workflows = scheduled_projects(workflows)
+    if not workflows:
+        print("Skipping rotation: no project has enabled scheduled dispatches.")
+        return
     workflow = next_project(workflows, workflow_runs(event="workflow_dispatch", branch="main"))
     if dry_run:
         print(f"Would dispatch {workflow} on main.")

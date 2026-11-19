@@ -1,5 +1,4 @@
 name: NYTimes-KMP
-run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / NYTimes-KMP
 
 on:
   pull_request:
@@ -9,11 +8,6 @@ on:
       - 'configs/nytimes-kmp.init.gradle'
       - 'configs/compilers-2.4.21-9267.yaml'
   workflow_dispatch:
-    inputs:
-      scheduled:
-        description: Triggered by replay rotation
-        type: boolean
-        default: false
 
 permissions:
   contents: read

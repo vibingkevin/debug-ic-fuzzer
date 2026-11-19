@@ -1,5 +1,4 @@
 name: PeopleInSpace
-run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / PeopleInSpace
 
 on:
   pull_request:
@@ -7,11 +6,6 @@ on:
       - '.github/workflows/people-in-space.yml'
       - 'configs/people-in-space.yaml'
   workflow_dispatch:
-    inputs:
-      scheduled:
-        description: Triggered by replay rotation
-        type: boolean
-        default: false
 
 permissions:
   contents: read
