@@ -2,6 +2,14 @@ name: Confetti
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/confetti.yml'
+      - 'configs/confetti.yaml'
+      - 'configs/confetti-reproducible.init.gradle'
+      - 'configs/compilers-2.4.21-9267.yaml'
+      - 'debug_ic_fuzzer.py'
+      - 'impl/**'
 
 permissions:
   contents: read
