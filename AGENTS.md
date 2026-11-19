@@ -19,3 +19,4 @@
 7. Keep configuration changes minimal; add workarounds only for problems reproduced in the selected project.
 8. Cache reusable Gradle, Kotlin/Native, and package downloads, excluding IC state, project build/run state, and lock files. Restore and save separately, including after failures, with fresh keys and restore prefixes.
 9. Run commands directly in Actions logs; do not capture console output just to upload it. Keep structured results and required diagnostics.
+10. Append new project badges to the README footer; their order drives the twice-daily replay rotation. Support scheduled dispatches and keep schedules only in the rotation workflow.

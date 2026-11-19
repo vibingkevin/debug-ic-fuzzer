@@ -1,4 +1,5 @@
 name: BikeShare
+run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / BikeShare
 
 on:
   pull_request:
@@ -7,6 +8,11 @@ on:
       - 'configs/bike-share.yaml'
       - 'configs/bike-share-reproducible.init.gradle'
   workflow_dispatch:
+    inputs:
+      scheduled:
+        description: Triggered by replay rotation
+        type: boolean
+        default: false
 
 permissions:
   contents: read

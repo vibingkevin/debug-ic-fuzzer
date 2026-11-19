@@ -1,0 +1,53 @@
+name: Replay rotation
+
+on:
+  schedule:
+    - cron: '17 0,12 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'impl/rotation.py'
+      - 'tests/test_rotation.py'
+      - 'README.md'
+      - '.github/workflows/*.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'impl/rotation.py'
+      - 'tests/test_rotation.py'
+      - 'README.md'
+      - '.github/workflows/*.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: replay-rotation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[test]'
+      - run: python -m pytest -q tests/test_rotation.py
+  dispatch:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: false
+      - run: python3 -m impl.rotation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

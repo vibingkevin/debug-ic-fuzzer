@@ -1,7 +1,13 @@
 name: Confetti
+run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / Confetti
 
 on:
   workflow_dispatch:
+    inputs:
+      scheduled:
+        description: Triggered by replay rotation
+        type: boolean
+        default: false
 
 permissions:
   contents: read
