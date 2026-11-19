@@ -19,23 +19,16 @@ jobs:
       matrix:
         include:
           - { project: keyguard-ios, start_at: 0 }
-          - { project: keyguard-ios, start_at: 50 }
           - { project: keyguard-ios, start_at: 100 }
-          - { project: keyguard-ios, start_at: 150 }
           - { project: keyguard-ios, start_at: 200 }
-          - { project: keyguard-ios, start_at: 250 }
           - { project: keyguard-ios, start_at: 300 }
-          - { project: keyguard-ios, start_at: 350 }
           - { project: keyguard-ios, start_at: 400 }
-          - { project: keyguard-ios, start_at: 450 }
+          - { project: keyguard-ios, start_at: 500 }
+          - { project: keyguard-ios, start_at: 600, guard: true }
           - { project: keyguard-apple, start_at: 0 }
-          - { project: keyguard-apple, start_at: 50 }
           - { project: keyguard-apple, start_at: 100 }
-          - { project: keyguard-apple, start_at: 150 }
           - { project: keyguard-apple, start_at: 200 }
-          - { project: keyguard-apple, start_at: 250 }
           - { project: keyguard-apple, start_at: 300 }
-          - { project: keyguard-apple, start_at: 350 }
           - { project: keyguard-apple, start_at: 400, guard: true }
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
@@ -104,7 +97,7 @@ jobs:
       - name: Replay page
         shell: bash
         run: |
-          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project "configs/$PROJECT.yaml" --start-at "$START_AT" --commit-count 50)
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project "configs/$PROJECT.yaml" --start-at "$START_AT" --commit-count 100)
           if [ "$GUARD" = true ]; then
             set +e
             output=$("${replay[@]}" 2>&1)

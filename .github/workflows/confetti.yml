@@ -19,13 +19,9 @@ jobs:
       matrix:
         include:
           - start_at: 0
-          - start_at: 50
           - start_at: 100
-          - start_at: 150
           - start_at: 200
-          - start_at: 250
           - start_at: 300
-          - start_at: 350
           - start_at: 400
             guard: true
     env:
@@ -87,7 +83,7 @@ jobs:
       - name: Replay page
         shell: bash
         run: |
-          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/confetti.yaml --start-at "$START_AT" --commit-count 50)
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/confetti.yaml --start-at "$START_AT" --commit-count 100)
           if [ "$GUARD" = true ]; then
             set +e
             output=$("${replay[@]}" 2>&1)
