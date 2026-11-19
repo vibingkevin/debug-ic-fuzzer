@@ -58,6 +58,7 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path, *, st
         for variant in ("baseline", "sut"):
             create_detached_worktree(bare_repository, run_directory / variant, commit_ids[0])
         failed = False
+        successful_commits = both_failed_commits = 0
         progress = compiler_cleanup.enter_context(tqdm(total=len(commit_ids), desc="Commits", unit="commit", mininterval=0))
         for commit_index, commit_id in enumerate(commit_ids):
             # for each commit
@@ -94,6 +95,8 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path, *, st
                 comparison = {"error": str(error)}
             (run_directory / f"{commit_index:04d}-{commit_id[:12]}-comparison.json").write_text(json.dumps(comparison, indent=2) + "\n")
             tqdm.write(f"{commit_index:04d} comparison: {comparison}")
+            successful_commits += int(all(result["exit_code"] == 0 and result["error"] is None for result in variant_results.values()))
+            both_failed_commits += int(comparison.get("both_failed", False))
             failed = "error" in comparison or comparison.get("production_equal") is False
             progress.update(1)
             if failed:
@@ -101,6 +104,7 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path, *, st
         progress.close()
         write_run_summary(run_directory, bare_repository)
         print(run_directory, flush=True)
+        print(f"Successful builds (baseline + sut): {successful_commits}/{len(commit_ids)} commits; both failed: {both_failed_commits}.", flush=True)
         return int(failed)
 
 

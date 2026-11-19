@@ -34,7 +34,7 @@ def build_framework_fixture(framework_directory: Path, static: bool, value: int,
 
 
 @pytest.mark.parametrize("static", [False, True])
-@pytest.mark.parametrize("change", ["none", "debug", "debug-path", "missing-dsym", "code", "header", "modulemap", "plist", "identity"])
+@pytest.mark.parametrize("change", ["none", "debug", "debug-path", "missing-dsym", "swift-source-info", "swift-module", "code", "header", "modulemap", "plist", "identity"])
 def test_framework_comparison(tmp_path, static, change):
     """Compare real framework binaries under tmp_path for the selected static mode and change.
 
@@ -47,6 +47,8 @@ def test_framework_comparison(tmp_path, static, change):
     (baseline / "Headers/Sample.h").write_text("int value(void);\n")
     (baseline / "Modules/module.modulemap").write_text('framework module Sample { umbrella header "Sample.h" export * }\n')
     (baseline / "Info.plist").write_bytes(plistlib.dumps({"CFBundleVersion": "1"}))
+    (baseline / "Modules/arm64.swiftsourceinfo").write_bytes(b"source locations and timestamps")
+    (baseline / "Modules/arm64.swiftmodule").write_bytes(b"serialized module")
     build_framework_fixture(baseline, static, 1)
     dsym = baseline.parent / "Sample.framework.dSYM/Contents/Resources/DWARF"
     dsym.mkdir(parents=True)
@@ -57,6 +59,10 @@ def test_framework_comparison(tmp_path, static, change):
         (sut.parent / "Sample.framework.dSYM/Contents/Resources/DWARF/Sample").write_bytes(b"different debug info")
     elif change == "missing-dsym":
         shutil.rmtree(sut.parent / "Sample.framework.dSYM")
+    elif change == "swift-source-info":
+        (sut / "Modules/arm64.swiftsourceinfo").write_bytes(b"different source locations and timestamps")
+    elif change == "swift-module":
+        (sut / "Modules/arm64.swiftmodule").write_bytes(b"different serialized module")
     elif change == "code":
         build_framework_fixture(sut, static, 2)
     elif change == "debug-path":
@@ -101,6 +107,6 @@ def test_framework_comparison(tmp_path, static, change):
     # A dynamic link may already omit the remapped DWARF present in its input object.
     if change != "debug-path":
         assert comparison["strict_equal"] == (change == "none")
-    assert comparison["production_equal"] == (change in ("none", "debug", "debug-path", "missing-dsym", "identity"))
+    assert comparison["production_equal"] == (change in ("none", "debug", "debug-path", "missing-dsym", "swift-source-info", "identity"))
     assert (sut / "Sample").read_bytes() == original_contents
     assert (tmp_path / "store").exists() == (not comparison["strict_equal"])

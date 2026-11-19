@@ -26,6 +26,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
         platform: [linux-x64, macos-arm64, macos-x64]
         baseline: [incremental, clean]
