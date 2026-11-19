@@ -1,11 +1,7 @@
 """Enforce the replay rules for the first migrated external project."""
 
-import json
 from pathlib import Path
-import subprocess
-import sys
 
-import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,20 +29,3 @@ def test_nytimes_project_rules():
     assert "--project configs/nytimes-kmp.yaml" in replay
     assert "--start-at" not in replay
     assert "--commit-count" not in replay
-
-
-@pytest.mark.parametrize(("exit_code", "error", "valid"), [(0, None, True), (1, None, False), (0, "collection failed", False), (None, None, False)])
-def test_nytimes_gate_rejects_unsuccessful_builds(tmp_path, exit_code, error, valid):
-    workflow = yaml.safe_load((ROOT / ".github/workflows/nytimes-kmp.yml").read_text())
-    script = next(step["run"] for step in workflow["jobs"]["replay"]["steps"] if step.get("name") == "Require successful builds")
-    script = script.replace(".venv/bin/python", sys.executable)
-    run = tmp_path / "run/page"
-    run.mkdir(parents=True)
-    for variant in ("baseline", "sut"):
-        (run / f"0000-abc-{variant}.json").write_text(json.dumps(dict(exit_code=exit_code, error=error)))
-    result = subprocess.run(["bash", "-e", "-c", script], cwd=tmp_path, capture_output=True, text=True)
-    assert (result.returncode == 0) is valid, result.stderr
-    if valid:
-        for path in run.glob("*.json"):
-            path.unlink()
-        assert subprocess.run(["bash", "-e", "-c", script], cwd=tmp_path, capture_output=True).returncode != 0

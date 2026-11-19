@@ -30,8 +30,9 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path, *, st
         commit_count: Maximum commits to replay, or None for the remaining range.
 
     Returns:
-        0 if all pairs match, both builds fail, or both links are UP-TO-DATE, otherwise 1. Writes results and
-        worktrees under PROJECT_ROOT; configuration/setup errors propagate.
+        0 if each pair matches, both builds fail, or both links are UP-TO-DATE, unless every pair
+        has both builds fail; otherwise 1. Writes results and worktrees under PROJECT_ROOT;
+        configuration/setup errors propagate.
     """
     if start_at < 0:
         raise ValueError("--start-at must be nonnegative")
@@ -105,7 +106,7 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path, *, st
         write_run_summary(run_directory, bare_repository)
         print(run_directory, flush=True)
         print(f"Successful builds (baseline + sut): {successful_commits}/{len(commit_ids)} commits; both failed: {both_failed_commits}.", flush=True)
-        return int(failed)
+        return int(failed or both_failed_commits == len(commit_ids))
 
 
 def main():

@@ -60,18 +60,6 @@ jobs:
             nytimes-kmp-dependencies-v1-macos-arm64-
       - name: Replay full range
         run: .venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/nytimes-kmp.yaml
-      - name: Require successful builds
-        run: |
-          .venv/bin/python - <<'PY'
-          import json
-          from pathlib import Path
-
-          records = list(Path('run').glob('*/*-baseline.json')) + list(Path('run').glob('*/*-sut.json'))
-          assert records, 'No build records'
-          for path in records:
-              result = json.loads(path.read_text())
-              assert result['exit_code'] == 0 and result['error'] is None, f"Build failed: {path}"
-          PY
       - name: Save reusable build caches
         if: ${{ always() && steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5

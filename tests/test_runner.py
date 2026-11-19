@@ -350,10 +350,10 @@ def test_replay_order_records_and_stop(tmp_path, monkeypatch, failure, capsys):
     monkeypatch.setattr(runner, "save_product_contents", lambda *_: None)
     monkeypatch.setattr("impl.comparison.save_product_contents", lambda results: saved.append(results))
     monkeypatch.setattr(runner, "compare_products", fake_compare_products)
-    succeeds = failure in (None, "debug", "both-up-to-date", "both-failed", "both-failed-collection", "all-failed", "baseline-clean", "sut-clean", "both-clean")
+    succeeds = failure in (None, "debug", "both-up-to-date", "both-failed", "both-failed-collection", "baseline-clean", "sut-clean", "both-clean")
     assert replay_commits(Path("compilers.yaml"), Path("project.yaml")) == int(not succeeds)
     assert created == [("baseline", "a"), ("sut", "a")]
-    revisions = ["a", "b", "c"] if succeeds or failure == "both-failed-then-diff" else ["a", "b"]
+    revisions = ["a", "b", "c"] if succeeds or failure in ("all-failed", "both-failed-then-diff") else ["a", "b"]
     assert calls == [(sha, name) for sha in revisions for name in ("baseline", "sut")]
     (run_directory,) = (tmp_path / "run").iterdir()
     assert len(list(run_directory.glob("*.json"))) == len(calls) + len(revisions) + 1
