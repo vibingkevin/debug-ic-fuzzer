@@ -39,7 +39,7 @@ def activate_worktree(bare_repository: Path, parked_worktree: Path, commit_id: s
     project_directory = parked_worktree.parent / "project"
     run_repository_git(bare_repository, "worktree", "move", str(parked_worktree), str(project_directory))
     try:
-        subprocess.run(["git", "-C", str(project_directory), "checkout", "--detach", commit_id], check=True, capture_output=True, text=True)
+        subprocess.run(["git", "-C", str(project_directory), "checkout", "--force", "--detach", commit_id], check=True, capture_output=True, text=True)
         yield project_directory
     finally:
         run_repository_git(bare_repository, "worktree", "move", str(project_directory), str(parked_worktree))
