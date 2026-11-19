@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-import re
 import subprocess
 import sys
 
@@ -29,19 +28,11 @@ def test_nytimes_project_rules():
     assert project["task"] == ":app:compose:linkDebugFrameworkIosArm64"
     assert project["end_commit"] == "latest"
     job = workflow["jobs"]["replay"]
-    assert job["timeout-minutes"] <= 360
-    step = next(step for step in job["steps"] if step.get("name") == "Replay page")
-    assert "matrix.start_at" in step["env"]["START_AT"]
-    assert "matrix.guard" in step["env"]["GUARD"]
-    replay = next(step["run"] for step in job["steps"] if step.get("name") == "Replay page")
-    page_size = int(re.search(r"--commit-count (\d+)", replay)[1])
-    assert page_size > 0 and page_size % 5 == 0
-    entries = job["strategy"]["matrix"]["include"]
-    pages = [entry["start_at"] for entry in entries if not entry.get("guard")]
-    assert pages == list(range(0, entries[-1]["start_at"], page_size))
-    assert entries[-1].get("guard") is True
-    sample = yaml.safe_load((ROOT / ".github/workflows/ic-sample.yml").read_text())
-    assert 0 < job["strategy"]["max-parallel"] + sample["jobs"]["replay"]["strategy"]["max-parallel"] <= 5
+    assert "strategy" not in job
+    replay = next(step["run"] for step in job["steps"] if step.get("name") == "Replay full range")
+    assert "--project configs/nytimes-kmp.yaml" in replay
+    assert "--start-at" not in replay
+    assert "--commit-count" not in replay
 
 
 @pytest.mark.parametrize(("exit_code", "error", "valid"), [(0, None, True), (1, None, False), (0, "collection failed", False), (None, None, False)])

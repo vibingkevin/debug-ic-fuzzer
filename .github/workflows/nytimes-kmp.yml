@@ -19,15 +19,6 @@ concurrency:
 jobs:
   replay:
     runs-on: macos-latest
-    timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - start_at: 0
-          - start_at: 25
-            guard: true
     env:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
@@ -46,7 +37,6 @@ jobs:
           python -m venv .venv
           .venv/bin/python -m pip install -e .
       - name: Download fixed compiler
-        if: ${{ !matrix.guard }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -54,7 +44,6 @@ jobs:
           gh release download compiler-2.4.21-9267 --repo vibingkevin/debug-ic-fuzzer --pattern "$archive" --dir compilers --clobber
           printf '%s  %s\n' c59d73272d932b865f48d8187e6cca40694dfdbd30e46a776056680fd339bf2e "compilers/$archive" | shasum -a 256 -c -
       - name: Restore reusable build caches
-        if: ${{ !matrix.guard }}
         id: build-cache
         uses: actions/cache/restore@v5
         with:
@@ -69,29 +58,9 @@ jobs:
           restore-keys: |
             nytimes-kmp-dependencies-v1-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/nytimes-kmp.yaml', 'configs/nytimes-kmp.init.gradle') }}-
             nytimes-kmp-dependencies-v1-macos-arm64-
-      - name: Replay page
-        env:
-          START_AT: ${{ matrix.start_at }}
-          GUARD: ${{ matrix.guard && 'true' || 'false' }}
-        shell: bash
-        run: |
-          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/nytimes-kmp.yaml --start-at "$START_AT" --commit-count 25)
-          if [ "$GUARD" = true ]; then
-            set +e
-            output=$("${replay[@]}" 2>&1)
-            result=$?
-            set -e
-            printf '%s\n' "$output"
-            if [ "$result" -eq 2 ] && grep -Eq "^--start-at $START_AT is outside the [0-9]+-commit range$" <<< "$output"; then
-              echo 'Guard page is empty as expected.'
-              exit 0
-            fi
-            echo '::error::Guard page did not report an empty range. Check the log; if it contains commits, extend the matrix and move the guard.'
-            exit 1
-          fi
-          "${replay[@]}"
+      - name: Replay full range
+        run: .venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/nytimes-kmp.yaml
       - name: Require successful builds
-        if: ${{ !matrix.guard }}
         run: |
           .venv/bin/python - <<'PY'
           import json
@@ -119,7 +88,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: nytimes-kmp-commits-${{ matrix.start_at }}
+          name: nytimes-kmp
           retention-days: 8
           path: |
             run/*/*.json
