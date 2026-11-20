@@ -1,0 +1,11 @@
+# Start at the AGP 8.7 upgrade; earlier mainline uses AGP 8.2, below KGP 2.4.21's supported range.
+# End before the shared module moves under :app; kotlinconf-app.yaml continues the replay.
+repository: "https://github.com/JetBrains/kotlinconf-app.git"
+branch: "main"
+start_commit: "7500a984605482ec175e919094e4b9ec462a7744"
+end_commit: "ef8c5f6756d49bccffbf663e18afca64ac2bf821"
+direction: forward
+task: ":shared:linkDebugFrameworkIosArm64"
+gradle_args:
+  - "-I"
+  - "{config_dir}/kotlinconf.init.gradle"
