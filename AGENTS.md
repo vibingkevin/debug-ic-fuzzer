@@ -17,5 +17,6 @@
 5. start_commit must build successfully with both baseline and SUT.
 6. Base PRs on the latest main and validate locally. Run one PR at a time, and wait for all gates to pass before opening the next.
 7. Keep configuration changes minimal; add workarounds only for problems reproduced in the selected project.
-8. Cache reusable Gradle, Kotlin/Native, and package downloads, excluding IC state, project build/run state, and lock files. Restore and save separately, including after failures, with fresh keys and restore prefixes.
+8. Cache reusable downloads, excluding IC/build/run state and lock files. Use stable project/platform/config keys with platform restore prefixes; save only on success.
 9. Run commands directly in Actions logs; do not capture console output just to upload it. Keep structured results and required diagnostics.
+10. Append new project badges to the README footer; their order drives the twice-daily replay rotation. Enable rotation one project per PR with the scheduled input and run-name marker; keep schedules only in the rotation workflow.

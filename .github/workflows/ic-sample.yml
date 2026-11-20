@@ -1,17 +1,39 @@
 name: IC sample
+run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / IC sample
 
 on:
   workflow_dispatch:
+    inputs:
+      scheduled:
+        description: Triggered by replay rotation
+        type: boolean
+        default: false
   push:
     branches: [ main ]
     paths:
-      - '**'
-      - '!**/*.md'
+      - 'debug_ic_fuzzer.py'
+      - 'impl/**'
+      - '!impl/rotation.py'
+      - 'tests/**'
+      - '!tests/test_rotation.py'
+      - 'configs/ic-sample-*.yaml'
+      - 'configs/compilers-2.4.21-9267.yaml'
+      - 'capture.init.gradle'
+      - 'pyproject.toml'
+      - '.github/workflows/ic-sample.yml'
   pull_request:
     branches: [ main ]
     paths:
-      - '**'
-      - '!**/*.md'
+      - 'debug_ic_fuzzer.py'
+      - 'impl/**'
+      - '!impl/rotation.py'
+      - 'tests/**'
+      - '!tests/test_rotation.py'
+      - 'configs/ic-sample-*.yaml'
+      - 'configs/compilers-2.4.21-9267.yaml'
+      - 'capture.init.gradle'
+      - 'pyproject.toml'
+      - '.github/workflows/ic-sample.yml'
 
 permissions:
   contents: read
