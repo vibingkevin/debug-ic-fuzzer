@@ -1,0 +1,11 @@
+gradle.settingsEvaluated { settings ->
+    // Metro 1.1.1 calls FIR APIs removed in Kotlin 2.4.21.
+    settings.dependencyResolutionManagement.versionCatalogs.configureEach { it.version('metro', '1.5.2') }
+    settings.pluginManagement.resolutionStrategy.eachPlugin {
+        if (requested.id.id == 'dev.zacsweers.metro') useVersion('1.5.2')
+    }
+    // Historical Compose artifacts are on Maven Central; the Space repository times out.
+    [settings.pluginManagement.repositories, settings.dependencyResolutionManagement.repositories].each { repositories ->
+        repositories.removeAll { it instanceof org.gradle.api.artifacts.repositories.MavenArtifactRepository && it.url.host == 'maven.pkg.jetbrains.space' }
+    }
+}
