@@ -15,7 +15,7 @@
 3. Do not paginate ranges that fit in one six-hour job. Otherwise, use measured timings to choose the largest practical page size, rounded to a multiple of five.
 4. Maximize the range supported by Kotlin 2.4.21 and prefer end_commit: latest. Try minimal dependency overrides before shrinking the range toward the middle.
 5. start_commit must build successfully with both baseline and SUT.
-6. Base PRs on the latest main and validate locally. Run one PR at a time, and wait for all gates to pass before opening the next.
+6. Base PRs on the latest main and validate locally. Run one PR at a time, and wait for all gates to pass before opening the next. Every PR must run and pass all six IC sample checks.
 7. Keep configuration changes minimal; add workarounds only for problems reproduced in the selected project.
 8. Cache reusable downloads, excluding IC/build/run state and lock files. Use stable project/platform/config keys with platform restore prefixes; save only on success.
 9. Run commands directly in Actions logs; do not capture console output just to upload it. Keep structured results and required diagnostics.
