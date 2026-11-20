@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/people-in-space.yml'
       - 'configs/people-in-space.yaml'
+      - 'configs/people-in-space-skie.init.gradle'
   workflow_dispatch:
 
 permissions:
