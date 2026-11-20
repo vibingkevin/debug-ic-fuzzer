@@ -19,4 +19,4 @@
 7. Keep configuration changes minimal; add workarounds only for problems reproduced in the selected project.
 8. Cache reusable downloads, excluding IC/build/run state and lock files. Use stable project/platform/config keys with platform restore prefixes; save only on success.
 9. Run commands directly in Actions logs; do not capture console output just to upload it. Keep structured results and required diagnostics.
-10. Append new project badges to the README footer; their order drives the twice-daily replay rotation. Enable rotation one project per PR with the scheduled input and run-name marker; keep schedules only in the rotation workflow.
+10. Keep project badges at the top of README and append each new badge after the last; their order drives the twice-daily replay rotation. Enable rotation one project per PR with the scheduled input and run-name marker; keep schedules only in the rotation workflow.
