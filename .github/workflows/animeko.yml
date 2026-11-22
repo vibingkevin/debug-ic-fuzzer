@@ -134,7 +134,7 @@ jobs:
             !.gradle-home/caches/**/*.lock
           key: ${{ steps.build-cache.outputs.cache-primary-key }}
       - name: Upload replay results
-        if: always()
+        if: ${{ always() && !matrix.guard }}
         uses: actions/upload-artifact@v6
         with:
           name: animeko-${{ matrix.start_at }}
