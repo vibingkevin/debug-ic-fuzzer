@@ -1,21 +1,70 @@
 name: KotlinConf
+run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / KotlinConf
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/kotlinconf.yml'
+      - 'configs/kotlinconf-app.yaml'
+      - 'configs/kotlinconf-shared.yaml'
+      - 'configs/kotlinconf.init.gradle'
+      - 'configs/compilers-2.4.21-9267.yaml'
   workflow_dispatch:
+    inputs:
+      scheduled:
+        description: Triggered by replay rotation
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+
+# Prior valid replays, including collection, averaged about seven minutes per commit.
+env:
+  PAGE_SIZE: '45'
 
 concurrency:
   group: kotlinconf-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pages.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e .
+      - id: pages
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from impl.config import Project, load_config
+          from impl.repository import prepare_repository
+
+          pages = []
+          for project, jdk in [('configs/kotlinconf-shared.yaml', '23'), ('configs/kotlinconf-app.yaml', '25')]:
+              _, commits = prepare_repository(Path('repos'), load_config(Path(project), Project))
+              pages.extend(dict(project=project, jdk=jdk, start_at=start) for start in range(0, len(commits), int(os.environ['PAGE_SIZE'])))
+              print(f'{project}: {len(commits)} commits')
+          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+              print('matrix=' + json.dumps({'include': pages}), file=output)
+          PY
   replay:
-    name: macos-arm64
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    name: macos-arm64 / JDK ${{ matrix.jdk }} / ${{ matrix.start_at }}
     runs-on: macos-latest
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v6
@@ -29,7 +78,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: ${{ matrix.jdk }}
       - name: Install Python dependencies
         run: |
           python -m venv .venv
@@ -39,17 +88,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           archive=kotlin-native-prebuilt-macos-aarch64-2.4.21-9267.tar.gz
-          for attempt in 1 2 3; do
-            if gh release download compiler-2.4.21-9267 --repo vibingkevin/debug-ic-fuzzer --pattern "$archive" --dir compilers --clobber; then
-              break
-            fi
-            rm -f "compilers/$archive"
-            if [ "$attempt" -eq 3 ]; then
-              echo "Failed to download $archive after 3 attempts" >&2
-              exit 1
-            fi
-            sleep $((attempt * 5))
-          done
+          gh release download compiler-2.4.21-9267 --repo vibingkevin/debug-ic-fuzzer --pattern "$archive" --dir compilers --clobber
           printf '%s  %s\n' c59d73272d932b865f48d8187e6cca40694dfdbd30e46a776056680fd339bf2e "compilers/$archive" | shasum -a 256 -c -
       - name: Restore reusable build caches
         id: build-cache
@@ -62,15 +101,17 @@ jobs:
             !.gradle-home/caches/**/.auto-cache/**
             !.gradle-home/caches/**/kotlin-native-ic-cache/**
             !.gradle-home/caches/**/*.lock
-          key: kotlinconf-dependencies-v2-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/kotlinconf-app.yaml') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ic-dependencies-v3-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', matrix.project) }}
           restore-keys: |
-            kotlinconf-dependencies-v2-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/kotlinconf-app.yaml') }}-
-            kotlinconf-dependencies-v2-macos-arm64-
+            ic-dependencies-v3-macos-arm64-
       - name: Replay KotlinConf
+        env:
+          PROJECT: ${{ matrix.project }}
+          START_AT: ${{ matrix.start_at }}
         run: |
-          .venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/kotlinconf-app.yaml
+          .venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project "$PROJECT" --start-at "$START_AT" --commit-count "$PAGE_SIZE"
       - name: Save reusable build caches
-        if: ${{ always() && steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
+        if: ${{ steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: |
@@ -85,7 +126,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: kotlinconf-macos-arm64
+          name: kotlinconf-macos-arm64-jdk${{ matrix.jdk }}-${{ matrix.start_at }}
           retention-days: 7
           path: |
             run/*/*.json
