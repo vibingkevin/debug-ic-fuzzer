@@ -1,9 +1,9 @@
 repository: "https://github.com/joreilly/BikeShare.git"
 branch: "main"
-start_commit: "634240dd47"
-end_commit: "af5449ba43c36dcc28449e2a11cbfaa3ed02cf30"
+start_commit: "46dc6da11e71f1c2226a2ea8f946414ca0058c1f"
+end_commit: "58773c4de3946df5f438918b159105173dc56795"
 direction: forward
-task: ":common:linkDebugFrameworkIosSimulatorArm64"
+task: ":common:linkDebugFrameworkIosArm64"
 gradle_args:
   - "-I"
   - "{config_dir}/bike-share-reproducible.init.gradle"

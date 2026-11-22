@@ -1,12 +1,19 @@
 name: BikeShare
+run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / BikeShare
 
 on:
   pull_request:
     paths:
       - '.github/workflows/bike-share.yml'
       - 'configs/bike-share.yaml'
-      - 'configs/bike-share-reproducible.init.gradle'
+      - 'configs/bike-share*.init.gradle'
+      - 'configs/compilers-2.4.21-9267.yaml'
   workflow_dispatch:
+    inputs:
+      scheduled:
+        description: Triggered by replay rotation
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,7 +37,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '25'
       - name: Install Python dependencies
         run: |
           python -m venv .venv
@@ -53,14 +60,13 @@ jobs:
             !.gradle-home/caches/**/.auto-cache/**
             !.gradle-home/caches/**/kotlin-native-ic-cache/**
             !.gradle-home/caches/**/*.lock
-          key: bike-share-dependencies-v1-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/bike-share.yaml') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ic-dependencies-v3-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/bike-share.yaml') }}
           restore-keys: |
-            bike-share-dependencies-v1-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/bike-share.yaml') }}-
-            bike-share-dependencies-v1-macos-arm64-
+            ic-dependencies-v3-macos-arm64-
       - name: Replay full range
         run: .venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/bike-share.yaml
       - name: Save reusable build caches
-        if: ${{ always() && steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
+        if: ${{ steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: |

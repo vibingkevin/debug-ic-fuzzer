@@ -5,7 +5,7 @@
 // stub and removes the racing second atom.
 gradle.projectsEvaluated {
     if (gradle.parent != null) return
-    def task = gradle.rootProject.tasks.getByPath(':common:linkDebugFrameworkIosSimulatorArm64')
+    def task = gradle.rootProject.tasks.getByPath(':common:linkDebugFrameworkIosArm64')
     task.toolOptions.freeCompilerArgs.addAll([
         '-linker-option', '-objc_stubs_small'
     ])
