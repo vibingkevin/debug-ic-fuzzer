@@ -1,0 +1,25 @@
+// Raise only AGP versions below the Kotlin 2.4.21 compatibility floor.
+def oldAgp = ['8.3.0', '8.5.1']
+gradle.settingsEvaluated { settings ->
+    settings.pluginManagement.resolutionStrategy.eachPlugin {
+        if (requested.id.id.startsWith('com.android.') && requested.version in oldAgp) {
+            useVersion('8.5.2')
+        }
+    }
+}
+// Compile legacy convention plugins against their original KGP API.
+// The root build still uses the configured Kotlin 2.4.21 plugin.
+if (gradle.parent != null) {
+    gradle.beforeProject { project ->
+        project.configurations.matching { it.name == 'compileClasspath' }.configureEach {
+            resolutionStrategy.eachDependency {
+                if (requested.group == 'org.jetbrains.kotlin' && requested.name.startsWith('kotlin-gradle-plugin')) {
+                    useVersion('2.0.20')
+                }
+                if (requested.group == 'com.android.tools.build' && requested.name == 'gradle' && requested.version in oldAgp) {
+                    useVersion('8.5.2')
+                }
+            }
+        }
+    }
+}

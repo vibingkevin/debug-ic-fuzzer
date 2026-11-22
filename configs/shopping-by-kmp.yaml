@@ -1,6 +1,9 @@
 repository: "https://github.com/razaghimahdi/Shopping-By-KMP.git"
 branch: "new-arch-2026"
-start_commit: "15e048a80dc62a397f509ea68c7d3ea1a10fdccd"
+start_commit: "c9b12f282513794dceec0e71b592f99579833ebf"
 end_commit: "latest"
 direction: forward
-task: ":app:shared:linkDebugFrameworkIosSimulatorArm64"
+task: ":app:shared:linkDebugFrameworkIosArm64"
+gradle_args:
+  - "-I"
+  - "{config_dir}/shopping-by-kmp.init.gradle"

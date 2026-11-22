@@ -1,0 +1,11 @@
+repository: "https://github.com/razaghimahdi/Shopping-By-KMP.git"
+branch: "new-arch-2026"
+start_commit: "3a2b1ab3253131f30851ebafc9efa0695a95079f"
+end_commit: "27dc228aa5048d7f33558af852c6861a75c43f1f"
+direction: forward
+task: ":shared:linkDebugFrameworkIosArm64"
+gradle_args:
+  - "-I"
+  - "{config_dir}/shopping-by-kmp-legacy.init.gradle"
+  # Avoid configuring the obsolete Android app DSL during Native replay.
+  - "--configure-on-demand"

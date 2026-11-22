@@ -1,0 +1,10 @@
+// Preserve Clock.System for sources written before the kotlinx-datetime 0.7 migration.
+gradle.beforeProject { project ->
+    project.configurations.configureEach {
+        resolutionStrategy.eachDependency {
+            if (requested.group == 'org.jetbrains.kotlinx' && requested.name.startsWith('kotlinx-datetime')) {
+                useVersion('0.7.1-0.6.x-compat')
+            }
+        }
+    }
+}
