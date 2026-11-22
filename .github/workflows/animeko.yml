@@ -1,7 +1,19 @@
 name: Animeko
+run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / Animeko
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/animeko.yml'
+      - 'configs/animeko-openani.yaml'
+      - 'configs/animeko-reproducible.init.gradle'
+      - 'configs/compilers-2.4.21-9267.yaml'
   workflow_dispatch:
+    inputs:
+      scheduled:
+        description: Triggered by replay rotation
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,10 +31,22 @@ jobs:
       matrix:
         include:
           - start_at: 0
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/animeko-openani.yaml
           - start_at: 100
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/animeko-openani.yaml
           - start_at: 200
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/animeko-openani.yaml
           - start_at: 300
             guard: true
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/animeko-openani.yaml
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
       PYTHONDONTWRITEBYTECODE: '1'
@@ -75,15 +99,14 @@ jobs:
             !.gradle-home/caches/**/.auto-cache/**
             !.gradle-home/caches/**/kotlin-native-ic-cache/**
             !.gradle-home/caches/**/*.lock
-          key: animeko-dependencies-v2-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/animeko-openani.yaml', 'configs/animeko-reproducible.init.gradle') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ic-dependencies-v3-${{ matrix.platform }}-${{ hashFiles(matrix.compilers, matrix.project) }}
           restore-keys: |
-            animeko-dependencies-v2-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/animeko-openani.yaml', 'configs/animeko-reproducible.init.gradle') }}-
-            animeko-dependencies-v2-macos-arm64-
+            ic-dependencies-v3-${{ matrix.platform }}-
       - name: Replay page
         shell: bash
         run: |
           export JDK_JBR="$JAVA_HOME"
-          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/animeko-openani.yaml --start-at "$START_AT" --commit-count 100)
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers "${{ matrix.compilers }}" --project "${{ matrix.project }}" --start-at "$START_AT" --commit-count 100)
           if [ "$GUARD" = true ]; then
             set +e
             output=$("${replay[@]}" 2>&1)
@@ -99,7 +122,7 @@ jobs:
           fi
           "${replay[@]}"
       - name: Save reusable build caches
-        if: ${{ always() && steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
+        if: ${{ steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: |
