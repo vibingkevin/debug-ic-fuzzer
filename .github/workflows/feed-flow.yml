@@ -1,7 +1,19 @@
 name: FeedFlow
+run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / FeedFlow
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/feed-flow.yml'
+      - 'configs/feed-flow.yaml'
+      - 'configs/feed-flow-skie.init.gradle'
+      - 'configs/compilers-2.4.21-9267.yaml'
   workflow_dispatch:
+    inputs:
+      scheduled:
+        description: Triggered by replay rotation
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,19 +31,62 @@ jobs:
       matrix:
         include:
           - start_at: 0
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
           - start_at: 100
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
           - start_at: 200
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
           - start_at: 300
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
           - start_at: 400
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
           - start_at: 500
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
           - start_at: 600
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
           - start_at: 700
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
           - start_at: 800
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
           - start_at: 900
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
           - start_at: 1000
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
           - start_at: 1100
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
           - start_at: 1200
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
+          - start_at: 1300
             guard: true
+            platform: macos-arm64
+            compilers: configs/compilers-2.4.21-9267.yaml
+            project: configs/feed-flow.yaml
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       PYTHONDONTWRITEBYTECODE: '1'
@@ -111,14 +166,13 @@ jobs:
             !.gradle-home/caches/**/.auto-cache/**
             !.gradle-home/caches/**/kotlin-native-ic-cache/**
             !.gradle-home/caches/**/*.lock
-          key: feed-flow-dependencies-v2-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/feed-flow.yaml', 'configs/feed-flow-skie.init.gradle') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ic-dependencies-v3-${{ matrix.platform }}-${{ hashFiles(matrix.compilers, matrix.project) }}
           restore-keys: |
-            feed-flow-dependencies-v2-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/feed-flow.yaml', 'configs/feed-flow-skie.init.gradle') }}-
-            feed-flow-dependencies-v2-macos-arm64-
+            ic-dependencies-v3-${{ matrix.platform }}-
       - name: Replay page
         shell: bash
         run: |
-          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/feed-flow.yaml --start-at "$START_AT" --commit-count 100)
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers "${{ matrix.compilers }}" --project "${{ matrix.project }}" --start-at "$START_AT" --commit-count 100)
           if [ "$GUARD" = true ]; then
             set +e
             output=$("${replay[@]}" 2>&1)
@@ -134,14 +188,14 @@ jobs:
           fi
           "${replay[@]}"
       - name: Save reusable Swift snapshot package
-        if: ${{ always() && !matrix.guard && steps.swift-package-cache.outputs.cache-hit != 'true' }}
+        if: ${{ !matrix.guard && steps.swift-package-cache.outputs.cache-hit != 'true' }}
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
           path: .cache/feed-flow/swift
           key: feed-flow-swift-snapshot-v1-2026-11-01-a
       - name: Save reusable build caches
-        if: ${{ always() && steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
+        if: ${{ steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: |
@@ -153,7 +207,7 @@ jobs:
             !.gradle-home/caches/**/*.lock
           key: ${{ steps.build-cache.outputs.cache-primary-key }}
       - name: Upload replay results
-        if: always()
+        if: ${{ always() && !matrix.guard }}
         uses: actions/upload-artifact@v6
         with:
           name: feed-flow-${{ matrix.start_at }}
