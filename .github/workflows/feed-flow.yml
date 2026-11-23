@@ -128,22 +128,22 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: .cache/feed-flow/swift
-          key: feed-flow-swift-snapshot-v1-2026-11-01-a
+          key: feed-flow-swift-snapshot-v2-2026-11-19-a
       - name: Download Swift snapshot package
         if: ${{ !matrix.guard }}
         run: |
           mkdir -p .cache/feed-flow/swift
-          package=.cache/feed-flow/swift/swift-DEVELOPMENT-SNAPSHOT-2026-11-01-a-osx.pkg
+          package=.cache/feed-flow/swift/swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-11-19-a-osx.pkg
           if [ ! -s "$package" ]; then
             curl --fail --location --retry 3 --output "$package" \
-              https://download.swift.org/development/xcode/swift-DEVELOPMENT-SNAPSHOT-2026-11-01-a/swift-DEVELOPMENT-SNAPSHOT-2026-11-01-a-osx.pkg
+              https://download.swift.org/swift-6.4.x-branch/xcode/swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-11-19-a/swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-11-19-a-osx.pkg
           fi
-          printf '%s  %s\n' 9582e21a1a7096f578fd1f616be8e8588259b516ce58885bac70eb345e3c49b6 "$package" | shasum -a 256 -c -
+          printf '%s  %s\n' 0c6a7348791470a1534efde076804e68a06e0fffd1808397d1213b48f51a4682 "$package" | shasum -a 256 -c -
       - name: Install Swift snapshot toolchain
         if: ${{ !matrix.guard }}
         run: |
-          toolchain_id=org.swift.65202611011a
-          package=.cache/feed-flow/swift/swift-DEVELOPMENT-SNAPSHOT-2026-11-01-a-osx.pkg
+          toolchain_id=org.swift.64202611191a
+          package=.cache/feed-flow/swift/swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-11-19-a-osx.pkg
           if ! xcrun --no-cache --toolchain "$toolchain_id" --find swiftc >/dev/null 2>&1; then
             sudo installer -pkg "$package" -target /
           fi
@@ -153,12 +153,19 @@ jobs:
           if [ "$default_ld" != "$swift_bin_dir/ld" ]; then
             sudo cp "$default_ld" "$swift_bin_dir/ld"
           fi
+          default_libtool="$(xcrun --no-cache --toolchain XcodeDefault --find libtool)"
+          if [ "$default_libtool" != "$swift_bin_dir/libtool" ]; then
+            sudo cp "$default_libtool" "$swift_bin_dir/libtool"
+          fi
           echo "TOOLCHAINS=$toolchain_id" >> "$GITHUB_ENV"
           echo "PATH=$swift_bin_dir:$PATH" >> "$GITHUB_ENV"
           test "$(xcrun --no-cache --toolchain "$toolchain_id" --find ld)" = "$swift_bin_dir/ld"
+          test "$(xcrun --no-cache --toolchain "$toolchain_id" --find libtool)" = "$swift_bin_dir/libtool"
           xcrun --no-cache --toolchain "$toolchain_id" --find swiftc
           xcrun --no-cache --toolchain "$toolchain_id" --find ld
+          xcrun --no-cache --toolchain "$toolchain_id" --find libtool
           xcrun --no-cache --toolchain "$toolchain_id" swiftc --version
+          xcrun --no-cache --toolchain "$toolchain_id" swiftc -frontend -help-hidden | grep -F -- '-prefix-map-sourceinfo'
       - name: Restore reusable build caches
         id: build-cache
         if: ${{ !matrix.guard }}
@@ -198,7 +205,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: .cache/feed-flow/swift
-          key: feed-flow-swift-snapshot-v1-2026-11-01-a
+          key: feed-flow-swift-snapshot-v2-2026-11-19-a
       - name: Save reusable build caches
         if: ${{ steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5

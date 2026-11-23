@@ -2,7 +2,6 @@
 
 from pathlib import Path
 import hashlib
-import re
 import tempfile
 
 from impl.collection import is_within_directory, normalize_text_content, snapshot_file
@@ -42,36 +41,13 @@ def find_product_files(build_result: dict) -> dict[str, Path]:
     return files
 
 
-def normalize_swiftsourceinfo_mtimes(data: bytes) -> bytes:
-    """Zero serialized source-file mtimes while preserving all other source info."""
-    starts = [match.start() for match in re.finditer(rb"[0-9a-f]{64}", data)]
-    runs: list[tuple[int, int]] = []
-    index = 0
-    while index < len(starts):
-        end = index + 1
-        while end < len(starts) and starts[end] - starts[end - 1] == 84:
-            end += 1
-        if end - index >= 2:
-            runs.append((index, end))
-        index = end
-    if not runs:
-        return data
-    normalized = bytearray(data)
-    for start, end in runs:
-        for record_start in starts[start:end]:
-            normalized[record_start + 64 : record_start + 72] = b"\0" * 8
-    return bytes(normalized)
-
-
 def compute_production_md5(product_path: Path, scratch_directory: Path) -> str | None:
     """Return the MD5 of product_path's production view without changing the original file.
 
     product_path is the product file; scratch_directory holds temporary normalized binaries.
     Strip ELF debug data/build ID or normalize Mach-O binaries/archives. Normalize headers as text;
-    normalize Swift source-info mtimes, and hash other files unchanged. Return None for dSYM files.
+    hash other files unchanged. Return None for dSYM files.
     """
-    if product_path.suffix == ".swiftsourceinfo":
-        return hashlib.md5(normalize_swiftsourceinfo_mtimes(product_path.read_bytes())).hexdigest()
     if any(parent.suffix == ".dSYM" for parent in product_path.parents):
         return None
     if product_path.suffix == ".h":

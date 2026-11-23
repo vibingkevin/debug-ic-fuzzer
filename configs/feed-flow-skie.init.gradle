@@ -7,10 +7,9 @@ gradle.settingsEvaluated { settings ->
 }
 
 gradle.beforeProject { project ->
-    // The selected Swift snapshot rejects -prefix-map-sourceinfo. The fuzzer excludes
-    // .swiftsourceinfo from production comparison, so this unsupported flag is unnecessary.
     project.plugins.withId('co.touchlab.skie') {
         def build = project.extensions.getByName('skie').build
         build.noClangModuleBreadcrumbsInStaticFrameworks.set(true)
+        build.freeSwiftCompilerArgs.addAll(['-Xfrontend', '-prefix-map-sourceinfo'])
     }
 }

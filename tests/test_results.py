@@ -6,24 +6,7 @@ import subprocess
 import pytest
 
 from impl.collection import collect_cache_files
-from impl.comparison import collect_product_hashes, compare_products, normalize_swiftsourceinfo_mtimes, save_product_contents
-
-
-def test_swiftsourceinfo_mtime_normalization_preserves_other_fields():
-    record = bytearray(b"a" * 64)
-    record.extend((123).to_bytes(8, "little"))
-    record.extend((456).to_bytes(8, "little"))
-    record.extend((789).to_bytes(4, "little"))
-    second = bytearray(b"b" * 64)
-    second.extend((987).to_bytes(8, "little"))
-    second.extend((654).to_bytes(8, "little"))
-    second.extend((321).to_bytes(4, "little"))
-    normalized = normalize_swiftsourceinfo_mtimes(bytes(record + second))
-    assert normalized[:64] == b"a" * 64
-    assert normalized[84:148] == b"b" * 64
-    assert normalized[64:72] == normalized[148:156] == b"\0" * 8
-    assert normalized[72:84] == record[72:84]
-    assert normalized[156:168] == second[72:84]
+from impl.comparison import collect_product_hashes, compare_products, save_product_contents
 
 
 @pytest.fixture

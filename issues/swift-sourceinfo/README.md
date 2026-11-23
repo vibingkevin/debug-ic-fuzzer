@@ -16,12 +16,10 @@ These are source mtimes inside `SOURCE_FILE_LIST`, not the filesystem mtime of t
 
 ## Current workaround and follow-up
 
-Production comparison now zeroes only serialized `.swiftsourceinfo` mtime fields, while strict comparison retains the original file hash. Path, interface hash, size, and declaration differences remain visible.
+The replay now uses Swift's compiler-side `-Xfrontend -prefix-map-sourceinfo` option. Production comparison hashes `.swiftsourceinfo` normally, while strict comparison retains the original file hash.
 
-`-Xfrontend -prefix-map-sourceinfo` remains a possible compiler-side optimization once the project's supported Swift toolchain provides it. The option zeros serialized source mtimes and applies configured path mappings; see [Swift PR #90671](https://github.com/swiftlang/swift/pull/90671). The comparator normalization is already active and does not require changing the compiler or incremental-build inputs.
+`-Xfrontend -prefix-map-sourceinfo` zeros serialized source mtimes and applies configured path mappings; see [Swift PR #90671](https://github.com/swiftlang/swift/pull/90671). FeedFlow passes it through SKIE's Swift compiler arguments and pins the Swift 6.4.x development snapshot that provides the option.
 
-As checked on 2026-11-19, the source of [Swift 6.4.x development snapshot 2026-11-09](https://github.com/swiftlang/swift/blob/swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-11-09-a/include/swift/Option/FrontendOptions.td) and `release/6.5.x` contains the option. Swift 6.4.2 and `release/6.4.3` do not, and a local Swift 6.4 compiler rejects it. The [macos-latest image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md) defaults to Xcode 26.6; the separate [xcode-27 image](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md) lists Xcode 27.2, which [contains Swift 6.4.2](https://forums.swift.org/t/announcing-swift-6-4-2/90337). Merely selecting a newer runner does not provide this option.
+As checked on 2026-11-23, the source of [Swift 6.4.x development snapshot 2026-11-19](https://github.com/swiftlang/swift/blob/swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-11-19-a/include/swift/Option/FrontendOptions.td) contains the option. Swift 6.4.2 and `release/6.4.3` do not, and the Xcode toolchains on the current macOS runners reject it. Merely selecting a newer runner does not provide this option.
 
-The comparator uses the normalization path until a supported Swift toolchain is available. It does not change source mtimes before compilation, which would alter incremental-build inputs.
-
-Timestamp-only changes are normalized while meaningful source-info changes still differ. The affected project replay remains the CI regression check.
+The affected project replay remains the CI regression check. If a future toolchain removes the option, the workflow's explicit frontend-help check fails before replaying commits.
