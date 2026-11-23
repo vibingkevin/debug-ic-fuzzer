@@ -1,5 +1,7 @@
 repository: "https://github.com/xxfast/NYTimes-KMP.git"
 branch: "main"
+# The first Kotlin 2.4.0 boundary is replayed by nytimes-kmp-legacy.yaml.
+# This segment starts after the module split, when :app:compose is the valid task.
 start_commit: "0c73205838161a4f12e1c0aefe44900d59f63d37"
 end_commit: "latest"
 direction: forward
