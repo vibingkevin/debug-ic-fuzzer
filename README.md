@@ -68,7 +68,7 @@ Paging applies after selecting the YAML range and its `direction`. With no pagin
 
 Use `gradle_args` for project properties and extra init scripts. `{config_dir}` expands to the project YAML’s directory, so an init-script argument can be written as `{config_dir}/project.init.gradle`.
 
-The [FeedFlow configuration](configs/feed-flow.yaml) starts at the first Kotlin 2.4 commit and overrides older SKIE releases with 0.10.16 for Kotlin 2.4.21 compatibility. It requires a Swift toolchain with `-prefix-map-sourceinfo`, which zeros source-info timestamps, and disables Clang module breadcrumbs in static Swift objects. Apple Swift 6.3.1 and 6.3.2 do not support the source-info flag; the official [2026-11-01 Swift development snapshot](https://www.swift.org/install/macos/) does. The comparison rules remain unchanged.
+The [FeedFlow configuration](configs/feed-flow.yaml) starts at the first Kotlin 2.4 commit and overrides older SKIE releases with 0.10.16 for Kotlin 2.4.21 compatibility. Its init script disables Clang module breadcrumbs in static Swift objects. The comparison normalizes only serialized `.swiftsourceinfo` mtime fields, so the replay does not depend on a Swift compiler flag that is absent from the selected snapshot.
 
 Install the snapshot as a dedicated writable toolchain alongside Xcode. Kotlin/Native finds SKIE's Swift compiler relative to the linker returned by `xcrun --find ld`, so selecting Swift alone is insufficient. Copy Xcode's linker into the dedicated toolchain (a symlink resolves back to Xcode), then verify both selected paths before replaying:
 

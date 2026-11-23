@@ -33,6 +33,14 @@ def build_framework_fixture(framework_directory: Path, static: bool, value: int,
     subprocess.run(command, env={**os.environ, "ZERO_AR_DATE": "1"}, check=True, capture_output=True)
 
 
+def sourceinfo_fixture(mtime: int, marker: bytes = b"a") -> bytes:
+    record = bytearray(marker * 64)
+    record.extend(mtime.to_bytes(8, "little"))
+    record.extend((456).to_bytes(8, "little"))
+    record.extend((789).to_bytes(4, "little"))
+    return bytes(record + record)
+
+
 @pytest.mark.parametrize("static", [False, True])
 @pytest.mark.parametrize("change", ["none", "debug", "debug-path", "missing-dsym", "swift-source-info", "swift-module", "code", "header", "modulemap", "plist", "identity"])
 def test_framework_comparison(tmp_path, static, change):
@@ -47,7 +55,7 @@ def test_framework_comparison(tmp_path, static, change):
     (baseline / "Headers/Sample.h").write_text("int value(void);\n")
     (baseline / "Modules/module.modulemap").write_text('framework module Sample { umbrella header "Sample.h" export * }\n')
     (baseline / "Info.plist").write_bytes(plistlib.dumps({"CFBundleVersion": "1"}))
-    (baseline / "Modules/arm64.swiftsourceinfo").write_bytes(b"source locations and timestamps")
+    (baseline / "Modules/arm64.swiftsourceinfo").write_bytes(sourceinfo_fixture(1))
     (baseline / "Modules/arm64.swiftmodule").write_bytes(b"serialized module")
     build_framework_fixture(baseline, static, 1)
     dsym = baseline.parent / "Sample.framework.dSYM/Contents/Resources/DWARF"
@@ -60,7 +68,7 @@ def test_framework_comparison(tmp_path, static, change):
     elif change == "missing-dsym":
         shutil.rmtree(sut.parent / "Sample.framework.dSYM")
     elif change == "swift-source-info":
-        (sut / "Modules/arm64.swiftsourceinfo").write_bytes(b"different source locations and timestamps")
+        (sut / "Modules/arm64.swiftsourceinfo").write_bytes(sourceinfo_fixture(2, b"b"))
     elif change == "swift-module":
         (sut / "Modules/arm64.swiftmodule").write_bytes(b"different serialized module")
     elif change == "code":
@@ -107,6 +115,6 @@ def test_framework_comparison(tmp_path, static, change):
     # A dynamic link may already omit the remapped DWARF present in its input object.
     if change != "debug-path":
         assert comparison["strict_equal"] == (change == "none")
-    assert comparison["production_equal"] == (change in ("none", "debug", "debug-path", "missing-dsym", "swift-source-info", "identity"))
+    assert comparison["production_equal"] == (change in ("none", "debug", "debug-path", "missing-dsym", "identity"))
     assert (sut / "Sample").read_bytes() == original_contents
     assert (tmp_path / "store").exists() == (not comparison["strict_equal"])
