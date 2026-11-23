@@ -18,8 +18,8 @@ These are source mtimes inside `SOURCE_FILE_LIST`, not the filesystem mtime of t
 
 The replay now uses Swift's compiler-side `-Xfrontend -prefix-map-sourceinfo` option. Production comparison hashes `.swiftsourceinfo` normally, while strict comparison retains the original file hash.
 
-`-Xfrontend -prefix-map-sourceinfo` zeros serialized source mtimes and applies configured path mappings; see [Swift PR #90671](https://github.com/swiftlang/swift/pull/90671). FeedFlow passes it through SKIE's Swift compiler arguments and pins the Swift 6.4.x development snapshot that provides the option.
+`-Xfrontend -prefix-map-sourceinfo` zeros serialized source mtimes and applies configured path mappings; see [Swift PR #90671](https://github.com/swiftlang/swift/pull/90671). FeedFlow passes it through SKIE's Swift compiler arguments and pins the Swift 6.5 development snapshot that provides the option.
 
-As checked on 2026-11-23, the source of [Swift 6.4.x development snapshot 2026-11-19](https://github.com/swiftlang/swift/blob/swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-11-19-a/include/swift/Option/FrontendOptions.td) contains the option. Swift 6.4.2 and `release/6.4.3` do not, and the Xcode toolchains on the current macOS runners reject it. Merely selecting a newer runner does not provide this option.
+As checked on 2026-11-24, the source of [Swift 6.5 development snapshot 2026-11-01](https://github.com/swiftlang/swift/blob/swift-DEVELOPMENT-SNAPSHOT-2026-11-01-a/include/swift/Option/FrontendOptions.td) contains the option. The Xcode toolchains on the current macOS runners reject it, so the workflow verifies the installed snapshot path before replaying.
 
 The affected project replay remains the CI regression check. If a future toolchain removes the option, the workflow's explicit frontend-help check fails before replaying commits.

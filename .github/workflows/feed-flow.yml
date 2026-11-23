@@ -33,68 +33,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - start_at: 0
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
-          - start_at: 100
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
-          - start_at: 200
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
-          - start_at: 300
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
-          - start_at: 400
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
-          - start_at: 500
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
-          - start_at: 600
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
-          - start_at: 700
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
-          - start_at: 800
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
-          - start_at: 900
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
-          - start_at: 1000
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
-          - start_at: 1100
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
-          - start_at: 1200
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
-          - start_at: 1300
-            guard: true
-            platform: macos-arm64
-            compilers: configs/compilers-2.4.21-9267.yaml
-            project: configs/feed-flow.yaml
+          - { start_at: 0 }
+          - { start_at: 100 }
+          - { start_at: 200 }
+          - { start_at: 300 }
+          - { start_at: 400 }
+          - { start_at: 500 }
+          - { start_at: 600 }
+          - { start_at: 700 }
+          - { start_at: 800 }
+          - { start_at: 900 }
+          - { start_at: 1000 }
+          - { start_at: 1100 }
+          - { start_at: 1200 }
+          - { start_at: 1300, guard: true }
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       PYTHONDONTWRITEBYTECODE: '1'
-      COMPILERS: ${{ matrix.compilers }}
-      PROJECT: ${{ matrix.project }}
+      COMPILERS: configs/compilers-2.4.21-9267.yaml
+      PROJECT: configs/feed-flow.yaml
       START_AT: ${{ matrix.start_at }}
       GUARD: ${{ matrix.guard || false }}
     steps:
@@ -128,26 +85,29 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: .cache/feed-flow/swift
-          key: feed-flow-swift-snapshot-v2-2026-11-19-a
+          key: feed-flow-swift-snapshot-v3-2026-11-01-a
       - name: Download Swift snapshot package
         if: ${{ !matrix.guard }}
         run: |
           mkdir -p .cache/feed-flow/swift
-          package=.cache/feed-flow/swift/swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-11-19-a-osx.pkg
+          package=.cache/feed-flow/swift/swift-DEVELOPMENT-SNAPSHOT-2026-11-01-a-osx.pkg
           if [ ! -s "$package" ]; then
             curl --fail --location --retry 3 --output "$package" \
-              https://download.swift.org/swift-6.4.x-branch/xcode/swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-11-19-a/swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-11-19-a-osx.pkg
+              https://download.swift.org/development/xcode/swift-DEVELOPMENT-SNAPSHOT-2026-11-01-a/swift-DEVELOPMENT-SNAPSHOT-2026-11-01-a-osx.pkg
           fi
-          printf '%s  %s\n' 0c6a7348791470a1534efde076804e68a06e0fffd1808397d1213b48f51a4682 "$package" | shasum -a 256 -c -
+          printf '%s  %s\n' 9582e21a1a7096f578fd1f616be8e8588259b516ce58885bac70eb345e3c49b6 "$package" | shasum -a 256 -c -
       - name: Install Swift snapshot toolchain
         if: ${{ !matrix.guard }}
         run: |
-          toolchain_id=org.swift.64202611191a
-          package=.cache/feed-flow/swift/swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-11-19-a-osx.pkg
-          if ! xcrun --no-cache --toolchain "$toolchain_id" --find swiftc >/dev/null 2>&1; then
+          toolchain_id=org.swift.65202611011a
+          toolchain_dir=/Library/Developer/Toolchains/swift-DEVELOPMENT-SNAPSHOT-2026-11-01-a.xctoolchain
+          package=.cache/feed-flow/swift/swift-DEVELOPMENT-SNAPSHOT-2026-11-01-a-osx.pkg
+          if [ ! -x "$toolchain_dir/usr/bin/swiftc" ]; then
             sudo installer -pkg "$package" -target /
           fi
+          test -x "$toolchain_dir/usr/bin/swiftc"
           swiftc_path="$(xcrun --no-cache --toolchain "$toolchain_id" --find swiftc)"
+          test "$swiftc_path" = "$toolchain_dir/usr/bin/swiftc"
           swift_bin_dir="$(dirname "$swiftc_path")"
           default_ld="$(xcrun --no-cache --toolchain XcodeDefault --find ld)"
           if [ "$default_ld" != "$swift_bin_dir/ld" ]; then
@@ -178,9 +138,9 @@ jobs:
             !.gradle-home/caches/**/.auto-cache/**
             !.gradle-home/caches/**/kotlin-native-ic-cache/**
             !.gradle-home/caches/**/*.lock
-          key: ic-dependencies-v3-${{ matrix.platform }}-${{ hashFiles(matrix.compilers, matrix.project) }}
+          key: ic-dependencies-v3-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/feed-flow.yaml') }}
           restore-keys: |
-            ic-dependencies-v3-${{ matrix.platform }}-
+            ic-dependencies-v3-macos-arm64-
       - name: Replay page
         shell: bash
         run: |
@@ -205,7 +165,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: .cache/feed-flow/swift
-          key: feed-flow-swift-snapshot-v2-2026-11-19-a
+          key: feed-flow-swift-snapshot-v3-2026-11-01-a
       - name: Save reusable build caches
         if: ${{ steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5

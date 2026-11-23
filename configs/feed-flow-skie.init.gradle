@@ -6,6 +6,7 @@ gradle.settingsEvaluated { settings ->
     }
 }
 
+// Requires a Swift toolchain supporting -prefix-map-sourceinfo (Swift 6.5 snapshots).
 gradle.beforeProject { project ->
     project.plugins.withId('co.touchlab.skie') {
         def build = project.extensions.getByName('skie').build
