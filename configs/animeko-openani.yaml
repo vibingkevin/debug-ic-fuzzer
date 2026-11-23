@@ -1,7 +1,7 @@
 # Set JDK_JBR to a local JBR 21 directory; upstream build-logic requires this vendor.
 repository: "https://github.com/open-ani/animeko.git"
 branch: "main"
-start_commit: "741b66951a0f739576880dd9ba99b6daa0d113bd"
+start_commit: "340a26eaf741e89265ec0ebf7b2511695d05e9d7"
 end_commit: "latest"
 # Alternative range (12 commits):
 # start_commit: "0e5575894362ed2e760f48b8e44d12f918d59672"
