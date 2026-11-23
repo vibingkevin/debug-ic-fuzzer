@@ -12,6 +12,7 @@ def test_nytimes_project_rules():
     workflow = yaml.safe_load((ROOT / workflow_path).read_text())
     # PyYAML's YAML 1.1 loader interprets the unquoted Actions key "on" as True.
     paths = workflow[True]["pull_request"]["paths"]
+    assert workflow_path in paths
     project_paths = {
         "configs/nytimes-kmp.yaml": (":app:compose:linkDebugFrameworkIosArm64", "latest"),
         "configs/nytimes-kmp-legacy.yaml": (":app:linkDebugFrameworkIosArm64", "6cf7d406500a91ee3e195faf78f3383230e628e1"),
