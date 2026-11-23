@@ -1,3 +1,7 @@
+# The first-parent Kotlin 2.4.0 boundary is 84b94e. Studio validation with Kotlin 2.4.21
+# fails in the historical :iosApp build because the source-set move leaves the old iOS
+# implementations unresolved. A minimal init-script alias workaround did not fix it.
+# Keep the later start below until that source-set compatibility issue is fixed.
 # Keyguard changed its iOS framework module name in the Kotlin 2.4 range, from iosApp to appleApp.
 # This config targets the historical :iosApp module ending at 6f58ed, immediately before the next 4def4f commit switched to :appleApp.
 # From that successor, keyguard-apple.yaml targets :appleApp.
