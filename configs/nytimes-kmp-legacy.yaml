@@ -1,0 +1,9 @@
+repository: "https://github.com/xxfast/NYTimes-KMP.git"
+branch: "main"
+start_commit: "82911c1c7a778aeafe51dede488b9238d7f0ddd0"
+end_commit: "6cf7d406500a91ee3e195faf78f3383230e628e1"
+direction: forward
+task: ":app:linkDebugFrameworkIosArm64"
+gradle_args:
+  - "-I"
+  - "{config_dir}/nytimes-kmp-legacy.init.gradle"
