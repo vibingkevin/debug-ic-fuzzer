@@ -52,7 +52,7 @@ def normalize_swiftsourceinfo_mtimes(data: bytes) -> bytes:
         while end < len(starts) and starts[end] - starts[end - 1] == 84:
             end += 1
         if end - index >= 2:
-            runs.append((starts[index], end))
+            runs.append((index, end))
         index = end
     if not runs:
         return data
