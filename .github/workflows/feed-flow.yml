@@ -90,6 +90,8 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       PYTHONDONTWRITEBYTECODE: '1'
+      COMPILERS: ${{ matrix.compilers }}
+      PROJECT: ${{ matrix.project }}
       START_AT: ${{ matrix.start_at }}
       GUARD: ${{ matrix.guard || false }}
     steps:
@@ -172,7 +174,7 @@ jobs:
       - name: Replay page
         shell: bash
         run: |
-          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers "${{ matrix.compilers }}" --project "${{ matrix.project }}" --start-at "$START_AT" --commit-count 100)
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers "$COMPILERS" --project "$PROJECT" --start-at "$START_AT" --commit-count 100)
           if [ "$GUARD" = true ]; then
             set +e
             output=$("${replay[@]}" 2>&1)
