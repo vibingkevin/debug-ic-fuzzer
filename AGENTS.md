@@ -15,6 +15,7 @@
 3. Do not paginate ranges that fit in one six-hour job. Otherwise, use measured timings to choose the largest practical page size, rounded to a multiple of five.
 4. Maximize the range supported by Kotlin 2.4.21 and prefer end_commit: latest. Try minimal dependency overrides before shrinking the range toward the middle.
 5. Choose the first-parent commit that first upgrades the project to Kotlin 2.4.x as start_commit. Use a later start only after a minimal init-script or version override cannot make that boundary build with Kotlin 2.4.21; record the blocking error and the omitted commits.
+   After the boundary builds, probe earlier first-parent commits in reverse order with Kotlin 2.4.21. If an earlier commit builds without a project-specific workaround, move start_commit backward and continue until the first failing boundary. Record the final start and the failed probe that stops the backward extension.
 6. start_commit must build successfully with both baseline and SUT.
 7. Base PRs on the latest main and validate locally. Run one PR at a time, and wait for all gates to pass before opening the next. Every PR must run and pass all six IC sample checks.
 8. Keep configuration changes minimal; add workarounds only for problems reproduced in the selected project.
