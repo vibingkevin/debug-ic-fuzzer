@@ -31,16 +31,12 @@ jobs:
       matrix:
         include:
           - { project_name: keyguard-ios, project: configs/keyguard-ios.yaml, start_at: 0, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
-          - { project_name: keyguard-ios, project: configs/keyguard-ios.yaml, start_at: 100, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
-          - { project_name: keyguard-ios, project: configs/keyguard-ios.yaml, start_at: 200, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
-          - { project_name: keyguard-ios, project: configs/keyguard-ios.yaml, start_at: 300, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
-          - { project_name: keyguard-ios, project: configs/keyguard-ios.yaml, start_at: 400, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
-          - { project_name: keyguard-ios, project: configs/keyguard-ios.yaml, start_at: 500, guard: true, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
           - { project_name: keyguard-apple, project: configs/keyguard-apple.yaml, start_at: 0, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
           - { project_name: keyguard-apple, project: configs/keyguard-apple.yaml, start_at: 100, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
           - { project_name: keyguard-apple, project: configs/keyguard-apple.yaml, start_at: 200, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
           - { project_name: keyguard-apple, project: configs/keyguard-apple.yaml, start_at: 300, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
-          - { project_name: keyguard-apple, project: configs/keyguard-apple.yaml, start_at: 400, guard: true, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
+          - { project_name: keyguard-apple, project: configs/keyguard-apple.yaml, start_at: 400, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
+          - { project_name: keyguard-apple, project: configs/keyguard-apple.yaml, start_at: 500, guard: true, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
       PYTHONDONTWRITEBYTECODE: '1'
