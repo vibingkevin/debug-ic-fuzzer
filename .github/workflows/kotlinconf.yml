@@ -6,7 +6,6 @@ on:
     paths:
       - '.github/workflows/kotlinconf.yml'
       - 'configs/kotlinconf-app.yaml'
-      - 'configs/kotlinconf-shared.yaml'
       - 'configs/kotlinconf.init.gradle'
       - 'configs/compilers-2.4.21-9267.yaml'
   workflow_dispatch:
@@ -50,7 +49,7 @@ jobs:
           from impl.repository import prepare_repository
 
           pages = []
-          for project, jdk in [('configs/kotlinconf-shared.yaml', '23'), ('configs/kotlinconf-app.yaml', '25')]:
+          for project, jdk in [('configs/kotlinconf-app.yaml', '25')]:
               _, commits = prepare_repository(Path('repos'), load_config(Path(project), Project))
               pages.extend(dict(project=project, jdk=jdk, start_at=start) for start in range(0, len(commits), int(os.environ['PAGE_SIZE'])))
               print(f'{project}: {len(commits)} commits')
