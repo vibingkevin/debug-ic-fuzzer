@@ -1,4 +1,9 @@
 gradle.settingsEvaluated { settings ->
+    // Replay all historical commits with the fixed Kotlin 2.4.21 compiler.
+    settings.dependencyResolutionManagement.versionCatalogs.configureEach { it.version('kotlin', '2.4.21') }
+    settings.pluginManagement.resolutionStrategy.eachPlugin {
+        if (requested.id.id.startsWith('org.jetbrains.kotlin.')) useVersion('2.4.21')
+    }
     // Metro 1.1.1 calls FIR APIs removed in Kotlin 2.4.21.
     settings.dependencyResolutionManagement.versionCatalogs.configureEach { it.version('metro', '1.5.2') }
     settings.pluginManagement.resolutionStrategy.eachPlugin {
