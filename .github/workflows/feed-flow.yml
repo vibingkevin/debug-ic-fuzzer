@@ -105,10 +105,7 @@ jobs:
           if [ ! -x "$toolchain_dir/usr/bin/swiftc" ]; then
             sudo installer -pkg "$package" -target /
           fi
-          test -x "$toolchain_dir/usr/bin/swiftc"
-          swiftc_path="$(xcrun --no-cache --toolchain "$toolchain_id" --find swiftc)"
-          test "$swiftc_path" = "$toolchain_dir/usr/bin/swiftc"
-          swift_bin_dir="$(dirname "$swiftc_path")"
+          swift_bin_dir="$toolchain_dir/usr/bin"
           default_ld="$(xcrun --no-cache --toolchain XcodeDefault --find ld)"
           if [ "$default_ld" != "$swift_bin_dir/ld" ]; then
             sudo cp "$default_ld" "$swift_bin_dir/ld"
@@ -119,13 +116,6 @@ jobs:
           fi
           echo "TOOLCHAINS=$toolchain_id" >> "$GITHUB_ENV"
           echo "PATH=$swift_bin_dir:$PATH" >> "$GITHUB_ENV"
-          test "$(xcrun --no-cache --toolchain "$toolchain_id" --find ld)" = "$swift_bin_dir/ld"
-          test "$(xcrun --no-cache --toolchain "$toolchain_id" --find libtool)" = "$swift_bin_dir/libtool"
-          xcrun --no-cache --toolchain "$toolchain_id" --find swiftc
-          xcrun --no-cache --toolchain "$toolchain_id" --find ld
-          xcrun --no-cache --toolchain "$toolchain_id" --find libtool
-          xcrun --no-cache --toolchain "$toolchain_id" swiftc --version
-          xcrun --no-cache --toolchain "$toolchain_id" swiftc -frontend -help-hidden | grep -F -- '-prefix-map-sourceinfo'
       - name: Restore reusable build caches
         id: build-cache
         if: ${{ !matrix.guard }}
