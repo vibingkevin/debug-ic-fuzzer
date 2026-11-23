@@ -21,3 +21,7 @@
 9. Run commands directly in Actions logs; do not capture console output just to upload it. Keep structured results and required diagnostics.
 10. Keep project badges at the top of README and append each new badge after the last; their order drives the twice-daily replay rotation. Enable rotation one project per PR with the scheduled input and run-name marker; keep schedules only in the rotation workflow.
 11. Use the highest JDK version supported by the project and its build tools across the selected commit range.
+
+## Pull request checks
+
+After opening a pull request, wait for its gates with `gh pr checks <PR_NUMBER> --repo vibingkevin/debug-ic-fuzzer --watch --fail-fast --interval 60`. Investigate and fix any failed check before reporting the pull request as ready.
