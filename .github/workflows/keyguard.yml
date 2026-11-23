@@ -1,7 +1,19 @@
 name: Keyguard
+run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / Keyguard
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/keyguard.yml'
+      - 'configs/keyguard-apple.yaml'
+      - 'configs/keyguard-ios.yaml'
+      - 'configs/compilers-2.4.21-9267.yaml'
   workflow_dispatch:
+    inputs:
+      scheduled:
+        description: Triggered by replay rotation
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -12,28 +24,28 @@ concurrency:
 
 jobs:
   replay:
-    name: ${{ matrix.project }}-${{ matrix.start_at }}${{ matrix.guard && '-guard' || '' }}
+    name: ${{ matrix.project_name }}-${{ matrix.start_at }}${{ matrix.guard && '-guard' || '' }}
     runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { project: keyguard-ios, start_at: 0 }
-          - { project: keyguard-ios, start_at: 100 }
-          - { project: keyguard-ios, start_at: 200 }
-          - { project: keyguard-ios, start_at: 300 }
-          - { project: keyguard-ios, start_at: 400 }
-          - { project: keyguard-ios, start_at: 500 }
-          - { project: keyguard-ios, start_at: 600, guard: true }
-          - { project: keyguard-apple, start_at: 0 }
-          - { project: keyguard-apple, start_at: 100 }
-          - { project: keyguard-apple, start_at: 200 }
-          - { project: keyguard-apple, start_at: 300 }
-          - { project: keyguard-apple, start_at: 400, guard: true }
+          - { project_name: keyguard-ios, project: configs/keyguard-ios.yaml, start_at: 0, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
+          - { project_name: keyguard-ios, project: configs/keyguard-ios.yaml, start_at: 100, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
+          - { project_name: keyguard-ios, project: configs/keyguard-ios.yaml, start_at: 200, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
+          - { project_name: keyguard-ios, project: configs/keyguard-ios.yaml, start_at: 300, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
+          - { project_name: keyguard-ios, project: configs/keyguard-ios.yaml, start_at: 400, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
+          - { project_name: keyguard-ios, project: configs/keyguard-ios.yaml, start_at: 500, guard: true, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
+          - { project_name: keyguard-apple, project: configs/keyguard-apple.yaml, start_at: 0, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
+          - { project_name: keyguard-apple, project: configs/keyguard-apple.yaml, start_at: 100, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
+          - { project_name: keyguard-apple, project: configs/keyguard-apple.yaml, start_at: 200, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
+          - { project_name: keyguard-apple, project: configs/keyguard-apple.yaml, start_at: 300, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
+          - { project_name: keyguard-apple, project: configs/keyguard-apple.yaml, start_at: 400, guard: true, platform: macos-arm64, compilers: configs/compilers-2.4.21-9267.yaml }
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
       PYTHONDONTWRITEBYTECODE: '1'
       CARGO_BUILD_JOBS: 2
+      COMPILERS: ${{ matrix.compilers }}
       PROJECT: ${{ matrix.project }}
       START_AT: ${{ matrix.start_at }}
       GUARD: ${{ matrix.guard || false }}
@@ -90,14 +102,13 @@ jobs:
             !.gradle-home/caches/**/.auto-cache/**
             !.gradle-home/caches/**/kotlin-native-ic-cache/**
             !.gradle-home/caches/**/*.lock
-          key: keyguard-dependencies-v2-${{ matrix.project }}-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/keyguard-*.yaml') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ic-dependencies-v3-${{ matrix.platform }}-${{ hashFiles(matrix.compilers, matrix.project) }}
           restore-keys: |
-            keyguard-dependencies-v2-${{ matrix.project }}-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/keyguard-*.yaml') }}-
-            keyguard-dependencies-v2-${{ matrix.project }}-
+            ic-dependencies-v3-${{ matrix.platform }}-
       - name: Replay page
         shell: bash
         run: |
-          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project "configs/$PROJECT.yaml" --start-at "$START_AT" --commit-count 100)
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers "$COMPILERS" --project "$PROJECT" --start-at "$START_AT" --commit-count 100)
           if [ "$GUARD" = true ]; then
             set +e
             output=$("${replay[@]}" 2>&1)
@@ -113,7 +124,7 @@ jobs:
           fi
           "${replay[@]}"
       - name: Save reusable build caches
-        if: ${{ always() && steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
+        if: ${{ steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: |
@@ -128,7 +139,7 @@ jobs:
             !.gradle-home/caches/**/*.lock
           key: ${{ steps.build-cache.outputs.cache-primary-key }}
       - name: Upload replay results
-        if: always()
+        if: ${{ always() && !matrix.guard }}
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.project }}-${{ matrix.start_at }}

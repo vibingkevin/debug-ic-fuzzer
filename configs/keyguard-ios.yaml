@@ -1,9 +1,9 @@
-# Keyguard changed it's ios frmaework module name in in kotlin 2.4 range, from iosApp to appleApp. 
+# Keyguard changed its iOS framework module name in the Kotlin 2.4 range, from iosApp to appleApp.
 # This config targets the historical :iosApp module ending at 6f58ed, immediately before the next 4def4f commit switched to :appleApp.
 # From that successor, keyguard-apple.yaml targets :appleApp.
 repository: "https://github.com/AChep/keyguard-app.git"
 branch: "master"
-start_commit: "84b94e45849f62ba038c963c59d53aa54ec1d994"
+start_commit: "ec6ec0dc2a52175f9efd2cac82c7f893bf7eda26"
 end_commit: "6f58edb6ec34f9e660deb2bef07587661ae5e72c"
 direction: forward
 task: ":iosApp:linkDebugFrameworkIosArm64"
