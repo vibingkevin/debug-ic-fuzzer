@@ -1,5 +1,9 @@
 repository: "https://github.com/joreilly/BikeShare.git"
 branch: "main"
+# The first-parent Kotlin 2.4.10 boundary is 634240d. Studio with Kotlin 2.4.21
+# fails before linking with a KSP/Kotlin compiler ABI NoSuchFieldError. Minimal
+# init-script KSP overrides to 2.3.11 and 2.3.14 were also tested and failed.
+# Keep this later start until the KSP/compiler compatibility issue is fixed.
 start_commit: "46dc6da11e71f1c2226a2ea8f946414ca0058c1f"
 end_commit: "58773c4de3946df5f438918b159105173dc56795"
 direction: forward
