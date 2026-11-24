@@ -52,13 +52,14 @@ def load_config(config_path: Path, config_model):
     return config_model.model_validate(yaml.safe_load(config_path.read_text()))
 
 
-def resolve_native_home(compiler_config: Compiler, compiler_config_directory: Path, extraction_cleanup: ExitStack) -> Path:
+def resolve_native_home(compiler_config: Compiler, compiler_config_directory: Path, extraction_cleanup: ExitStack, run_directory: Path) -> Path:
     """Resolve an absolute Native home, extracting archives into fresh temporary storage.
 
     Args:
         compiler_config: Kotlin version and optional distribution directory or archive list.
         compiler_config_directory: Compiler YAML directory used to resolve relative archive paths.
         extraction_cleanup: ExitStack that removes extracted distributions when closed.
+        run_directory: Replay directory for temporary compiler distributions.
 
     Returns:
         The distribution directory, or the expected KGP download path when no home
@@ -83,8 +84,8 @@ def resolve_native_home(compiler_config: Compiler, compiler_config_directory: Pa
     else:
         native_home_path = native_home
     if native_home_path.name.endswith((".tgz", ".tar.gz")):
-        # extract from archive, every time
-        extraction_dir = Path(extraction_cleanup.enter_context(tempfile.TemporaryDirectory(prefix="ic-fuzzer-", dir="/tmp")))
+        # macOS midnight cleanup removes old empty directories from /tmp.
+        extraction_dir = Path(extraction_cleanup.enter_context(tempfile.TemporaryDirectory(prefix="ic-fuzzer-", dir=run_directory)))
         archive_path = compiler_config_directory / native_home_path
         with tarfile.open(archive_path) as archive:
             archive.extractall(extraction_dir, filter="data")
