@@ -1,7 +1,7 @@
-# The shared module moved under :app at this commit.
+# Start at the first-parent Kotlin 2.2.20 commit that compiles with Kotlin 2.4.21 overrides.
 repository: "https://github.com/JetBrains/kotlinconf-app.git"
 branch: "main"
-start_commit: "2d0635e8a57e32e963f6eaa53a1a9134d9a434ba"
+start_commit: "bc90eba2af4d703a0726e645445ecd0238ea64d3"
 end_commit: "latest"
 direction: forward
 task: ":app:shared:linkDebugFrameworkIosArm64"
