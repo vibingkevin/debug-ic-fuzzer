@@ -17,52 +17,13 @@ on:
 permissions:
   contents: read
 
-env:
-  PROJECT: configs/galwaybus.yaml
-  # The first 50 commits took over three hours on a hosted runner.
-  PAGE_SIZE: '50'
-
 concurrency:
   group: galwaybus-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  plan:
-    runs-on: ubuntu-latest
-    outputs:
-      pages: ${{ steps.pages.outputs.starts }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          lfs: false
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - run: python -m pip install -e .
-      - id: pages
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          from impl.config import Project, load_config
-          from impl.repository import prepare_repository
-
-          project = load_config(Path(os.environ['PROJECT']), Project)
-          _, commits = prepare_repository(Path('repos'), project)
-          starts = list(range(0, len(commits), int(os.environ['PAGE_SIZE'])))
-          print(f'{len(commits)} commits, starting at {starts}')
-          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
-              print('starts=' + json.dumps(starts), file=output)
-          PY
   replay:
-    needs: plan
-    name: commits-${{ matrix.start_at }}
     runs-on: macos-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        start_at: ${{ fromJSON(needs.plan.outputs.pages) }}
     env:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
@@ -101,10 +62,8 @@ jobs:
           key: ic-dependencies-v3-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/galwaybus.yaml') }}
           restore-keys: |
             ic-dependencies-v3-macos-arm64-
-      - name: Replay page
-        env:
-          START_AT: ${{ matrix.start_at }}
-        run: .venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project "$PROJECT" --start-at "$START_AT" --commit-count "$PAGE_SIZE"
+      - name: Replay full range
+        run: .venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/galwaybus.yaml
       - name: Save reusable build caches
         if: ${{ steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
@@ -121,7 +80,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: galwaybus-${{ matrix.start_at }}
+          name: galwaybus
           retention-days: 8
           path: |
             run/*/*.json
