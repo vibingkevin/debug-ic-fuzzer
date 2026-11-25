@@ -1,0 +1,10 @@
+// The navigation processor generates common sources used by these iOS tasks.
+gradle.beforeProject { project ->
+    if (project.path.startsWith(':app-feature:')) {
+        project.pluginManager.withPlugin('com.google.devtools.ksp') {
+            project.tasks.matching { it.name in ['compileKotlinIosArm64', 'kspKotlinIosArm64'] }.configureEach {
+                dependsOn('kspCommonMainKotlinMetadata')
+            }
+        }
+    }
+}

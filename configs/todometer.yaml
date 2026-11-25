@@ -1,0 +1,10 @@
+repository: "https://github.com/serbelga/Todometer-KMP.git"
+branch: "main"
+# This commit moved the iOS framework from :app to :app:shared.
+start_commit: "b5b751a01cfe7d01a00b3a36c87563fd25679e77"
+end_commit: "latest"
+direction: forward
+task: ":app:shared:linkDebugFrameworkIosArm64"
+gradle_args:
+  - "-I"
+  - "{config_dir}/todometer-ksp.init.gradle"
