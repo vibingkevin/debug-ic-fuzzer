@@ -1,5 +1,4 @@
 name: Todometer-KMP
-run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / Todometer-KMP
 
 on:
   pull_request:
@@ -19,61 +18,35 @@ on:
 permissions:
   contents: read
 
-# Each commit pair takes about 10 minutes; some link and finish in 15 or less.
-env:
-  PAGE_SIZE: '25'
+run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / Todometer-KMP
 
 concurrency:
   group: todometer-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  plan:
-    runs-on: ubuntu-latest
-    outputs:
-      pages: ${{ steps.pages.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          lfs: false
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - run: python -m pip install -e .
-      - id: pages
-        run: |
-          python - <<'PYTHON'
-          import json
-          import os
-          from pathlib import Path
-          from impl.config import Project, load_config
-          from impl.repository import prepare_repository
-
-          page_size = int(os.environ["PAGE_SIZE"])
-          pages = []
-          for name in ("todometer-legacy", "todometer"):
-              project = load_config(Path("configs") / f"{name}.yaml", Project)
-              _, commits = prepare_repository(Path("repos"), project)
-              print(f"{name}: {len(commits)} commits")
-              pages.extend(
-                  {"project": name, "start_at": start}
-                  for start in range(0, len(commits), page_size)
-              )
-          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
-              print("matrix=" + json.dumps(pages), file=output)
-          PYTHON
   replay:
-    needs: plan
-    name: ${{ matrix.project }}-${{ matrix.start_at }}
+    name: ${{ matrix.project }}-${{ matrix.start_at }}${{ matrix.guard && '-guard' || '' }}
     runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.plan.outputs.pages) }}
+        include:
+          - { project: todometer-legacy, start_at: 0 }
+          - { project: todometer-legacy, start_at: 25 }
+          - { project: todometer-legacy, start_at: 50, guard: true }
+          - { project: todometer, start_at: 0 }
+          - { project: todometer, start_at: 25 }
+          - { project: todometer, start_at: 50 }
+          - { project: todometer, start_at: 75 }
+          - { project: todometer, start_at: 100 }
+          - { project: todometer, start_at: 125 }
+          - { project: todometer, start_at: 150, guard: true }
     env:
-      PROJECT: configs/${{ matrix.project }}.yaml
-      START_AT: ${{ matrix.start_at }}
       PYTHONDONTWRITEBYTECODE: '1'
+      PROJECT: ${{ matrix.project }}
+      START_AT: ${{ matrix.start_at }}
+      GUARD: ${{ matrix.guard || false }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -82,6 +55,8 @@ jobs:
         with:
           python-version: '3.12'
       - uses: actions/setup-java@v5
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           distribution: temurin
           java-version: '25'
@@ -90,6 +65,7 @@ jobs:
           python -m venv .venv
           .venv/bin/python -m pip install -e .
       - name: Download fixed compiler
+        if: ${{ !matrix.guard }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -98,6 +74,7 @@ jobs:
           printf '%s  %s\n' c59d73272d932b865f48d8187e6cca40694dfdbd30e46a776056680fd339bf2e "compilers/$archive" | shasum -a 256 -c -
       - name: Restore reusable build caches
         id: build-cache
+        if: ${{ !matrix.guard }}
         uses: actions/cache/restore@v5
         with:
           path: |
@@ -107,13 +84,30 @@ jobs:
             !.gradle-home/caches/**/.auto-cache/**
             !.gradle-home/caches/**/kotlin-native-ic-cache/**
             !.gradle-home/caches/**/*.lock
-          key: ic-dependencies-v3-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', env.PROJECT) }}
+          key: todometer-dependencies-v1-${{ matrix.project }}-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/todometer*.yaml', 'configs/todometer-ksp.init.gradle') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ic-dependencies-v3-macos-arm64-
+            todometer-dependencies-v1-${{ matrix.project }}-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/todometer*.yaml', 'configs/todometer-ksp.init.gradle') }}-
+            todometer-dependencies-v1-${{ matrix.project }}-
       - name: Replay page
-        run: .venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project "$PROJECT" --start-at "$START_AT" --commit-count "$PAGE_SIZE"
+        shell: bash
+        run: |
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project "configs/$PROJECT.yaml" --start-at "$START_AT" --commit-count 25)
+          if [ "$GUARD" = true ]; then
+            set +e
+            output=$("${replay[@]}" 2>&1)
+            result=$?
+            set -e
+            printf '%s\n' "$output"
+            if [ "$result" -eq 2 ] && grep -Eq "^--start-at $START_AT is outside the [0-9]+-commit range$" <<< "$output"; then
+              echo 'Guard page is empty as expected.'
+              exit 0
+            fi
+            echo '::error::Guard page did not report an empty range. Check the log; if it contains commits, extend the matrix and move the guard.'
+            exit 1
+          fi
+          "${replay[@]}"
       - name: Save reusable build caches
-        if: ${{ steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
+        if: ${{ always() && steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: |
