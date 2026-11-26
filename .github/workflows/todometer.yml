@@ -19,8 +19,9 @@ on:
 permissions:
   contents: read
 
+# Each commit pair takes about 10 minutes; some link and finish in 15 or less.
 env:
-  PAGE_SIZE: '50'
+  PAGE_SIZE: '25'
 
 concurrency:
   group: todometer-${{ github.ref }}
