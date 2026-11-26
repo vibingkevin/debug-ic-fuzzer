@@ -70,15 +70,17 @@ Paging applies after selecting the YAML range and its `direction`. With no pagin
 
 Use `gradle_args` for project properties and extra init scripts. `{config_dir}` expands to the project YAML’s directory, so an init-script argument can be written as `{config_dir}/project.init.gradle`.
 
-The [FeedFlow configuration](configs/feed-flow.yaml) starts at the first Kotlin 2.4 commit and overrides older SKIE releases with 0.10.16 for Kotlin 2.4.21 compatibility. It requires a Swift toolchain with `-prefix-map-sourceinfo`, which zeros source-info timestamps, and disables Clang module breadcrumbs in static Swift objects. Apple Swift 6.3.1 and 6.3.2 do not support the source-info flag; the official [2026-11-01 Swift development snapshot](https://www.swift.org/install/macos/) does. The comparison rules remain unchanged.
+The [FeedFlow configuration](configs/feed-flow.yaml) starts at the first Kotlin 2.4 commit and overrides older SKIE releases with 0.10.16 for Kotlin 2.4.21 compatibility. Its init script enables Swift's `-prefix-map-sourceinfo` and disables Clang module breadcrumbs in static Swift objects. The workflow installs the official [Swift 6.5 development snapshot from 2026-11-01](https://www.swift.org/install/macos/), which supports the source-info flag.
 
-Install the snapshot as a dedicated writable toolchain alongside Xcode. Kotlin/Native finds SKIE's Swift compiler relative to the linker returned by `xcrun --find ld`, so selecting Swift alone is insufficient. Copy Xcode's linker into the dedicated toolchain (a symlink resolves back to Xcode), then verify both selected paths before replaying:
+Install the snapshot as a dedicated writable toolchain alongside Xcode. Kotlin/Native finds SKIE's Swift compiler relative to the linker tools returned by `xcrun`, so selecting Swift alone is insufficient. Copy Xcode's `ld` and `libtool` into the dedicated toolchain, then verify the selected paths before replaying:
 
 ```sh
 swift_toolchain_bin="$(dirname "$(xcrun --toolchain org.swift.65202611011a --find swiftc)")"
 cp -n "$(xcrun --toolchain XcodeDefault --find ld)" "$swift_toolchain_bin/ld"
+cp -n "$(xcrun --toolchain XcodeDefault --find libtool)" "$swift_toolchain_bin/libtool"
 TOOLCHAINS=org.swift.65202611011a xcrun --find ld
 TOOLCHAINS=org.swift.65202611011a xcrun swiftc --version
+TOOLCHAINS=org.swift.65202611011a xcrun swiftc -frontend -help-hidden | grep -F -- '-prefix-map-sourceinfo'
 TOOLCHAINS=org.swift.65202611011a .venv/bin/debug-ic-fuzzer --compilers configs/compilers-2.4.21.yaml --project configs/feed-flow.yaml
 ```
 
