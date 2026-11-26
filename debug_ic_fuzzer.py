@@ -55,7 +55,7 @@ def replay_commits(compilers_config_path: Path, project_config_path: Path, *, st
     run_directory.mkdir(parents=True)
     (run_directory / "range.json").write_text(json.dumps(dict(total_commits=total_commits, start_at=start_at, commit_count=len(commit_ids), commits=commit_ids), indent=2) + "\n")
     with ExitStack() as compiler_cleanup:
-        native_homes = {variant: resolve_native_home(compiler_config, compilers_config_path.parent, compiler_cleanup) for variant, compiler_config in compilers.items()}
+        native_homes = {variant: resolve_native_home(compiler_config, compilers_config_path.parent, compiler_cleanup, run_directory) for variant, compiler_config in compilers.items()}
         for variant in ("baseline", "sut"):
             create_detached_worktree(bare_repository, run_directory / variant, commit_ids[0])
         failed = False

@@ -1,0 +1,6 @@
+repository: "https://github.com/joreilly/GalwayBus.git"
+branch: "main"
+start_commit: "b9b0afaaf4a6fa6da156ccbad2f73eb65e6e59bc"
+end_commit: "latest"
+direction: forward
+task: ":shared:linkDebugFrameworkIosArm64"

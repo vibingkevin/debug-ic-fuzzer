@@ -39,12 +39,13 @@ def test_home_paths_and_fresh_archives(tmp_path, monkeypatch, extension):
         entry.size = 1
         tar.addfile(entry, io.BytesIO(b"x"))
     with ExitStack() as stack:
-        assert resolve_native_home(Compiler(kotlin_version="2.4.21"), tmp_path, stack) == tmp_path / ".konan/kotlin-native-prebuilt-linux-x86_64-2.4.21"
+        assert resolve_native_home(Compiler(kotlin_version="2.4.21"), tmp_path, stack, tmp_path) == tmp_path / ".konan/kotlin-native-prebuilt-linux-x86_64-2.4.21"
         with pytest.raises(ValueError, match="absolute path"):
-            resolve_native_home(Compiler(kotlin_version="2.4.21", kotlin_native_home="relative"), tmp_path, stack)
+            resolve_native_home(Compiler(kotlin_version="2.4.21", kotlin_native_home="relative"), tmp_path, stack, tmp_path)
         c = Compiler(kotlin_version="2.4.21", kotlin_native_home=f"compiler.{extension}")
-        first, second = [resolve_native_home(c, tmp_path, stack) for _ in range(2)]
+        first, second = [resolve_native_home(c, tmp_path, stack, tmp_path) for _ in range(2)]
         assert first != second and (first / "bin/konanc").is_file()
+        assert first.is_relative_to(tmp_path) and second.is_relative_to(tmp_path)
     assert not first.exists() and not second.exists()
 
 
@@ -54,7 +55,7 @@ def test_archive_list_selects_current_host(tmp_path, monkeypatch, system, machin
     monkeypatch.setattr("impl.config.platform.system", lambda: system)
     monkeypatch.setattr("impl.config.platform.machine", lambda: machine)
     with ExitStack() as stack:
-        assert resolve_native_home(Compiler(kotlin_version="2.4.21"), tmp_path, stack) == tmp_path / f".konan/kotlin-native-prebuilt-{host}-2.4.21"
+        assert resolve_native_home(Compiler(kotlin_version="2.4.21"), tmp_path, stack, tmp_path) == tmp_path / f".konan/kotlin-native-prebuilt-{host}-2.4.21"
     archives = []
     for archive_host in ("linux-x86_64", "macos-aarch64", "macos-x86_64"):
         archive = tmp_path / f"kotlin-native-prebuilt-{archive_host}.tar.gz"
@@ -66,7 +67,7 @@ def test_archive_list_selects_current_host(tmp_path, monkeypatch, system, machin
         archives.append(archive)
     compiler = Compiler(kotlin_version="2.4.21", kotlin_native_home=[str(archive) for archive in archives])
     with ExitStack() as stack:
-        native_home = resolve_native_home(compiler, tmp_path, stack)
+        native_home = resolve_native_home(compiler, tmp_path, stack, tmp_path)
         assert native_home.name == "dist"
         assert (native_home / "bin/konanc").read_bytes() == host.encode()
 
@@ -77,7 +78,7 @@ def test_archive_list_requires_one_host_match(tmp_path, monkeypatch):
     monkeypatch.setattr("impl.config.platform.machine", lambda: "x86_64")
     archives = [tmp_path / "compiler-macos-aarch64.tgz", tmp_path / "compiler-macos-aarch64-2.tgz"]
     with ExitStack() as stack, pytest.raises(ValueError, match="exactly one.*linux-x86_64"):
-        resolve_native_home(Compiler(kotlin_version="2.4.21", kotlin_native_home=archives), tmp_path, stack)
+        resolve_native_home(Compiler(kotlin_version="2.4.21", kotlin_native_home=archives), tmp_path, stack, tmp_path)
 
 
 def test_tar_cannot_escape(tmp_path):
@@ -88,7 +89,7 @@ def test_tar_cannot_escape(tmp_path):
         entry.size = 1
         tar.addfile(entry, io.BytesIO(b"x"))
     with ExitStack() as stack, pytest.raises(tarfile.FilterError):
-        resolve_native_home(Compiler(kotlin_version="2.4.21", kotlin_native_home=archive), tmp_path, stack)
+        resolve_native_home(Compiler(kotlin_version="2.4.21", kotlin_native_home=archive), tmp_path, stack, tmp_path)
     assert not (tmp_path / "escape").exists()
 
 
