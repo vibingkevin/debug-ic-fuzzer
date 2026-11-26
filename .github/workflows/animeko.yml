@@ -31,10 +31,35 @@ jobs:
       matrix:
         include:
           - start_at: 0
+          - start_at: 10
+          - start_at: 20
+          - start_at: 30
+          - start_at: 40
+          - start_at: 50
+          - start_at: 60
+          - start_at: 70
+          - start_at: 80
           - start_at: 90
+          - start_at: 100
+          - start_at: 110
+          - start_at: 120
+          - start_at: 130
+          - start_at: 140
+          - start_at: 150
+          - start_at: 160
+          - start_at: 170
           - start_at: 180
+          - start_at: 190
+          - start_at: 200
+          - start_at: 210
+          - start_at: 220
+          - start_at: 230
+          - start_at: 240
+          - start_at: 250
+          - start_at: 260
           - start_at: 270
-          - start_at: 360
+          - start_at: 280
+          - start_at: 290
             guard: true
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
@@ -95,7 +120,7 @@ jobs:
         shell: bash
         run: |
           export JDK_JBR="$JAVA_HOME"
-          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/animeko-openani.yaml --start-at "$START_AT" --commit-count 90)
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/animeko-openani.yaml --start-at "$START_AT" --commit-count 10)
           if [ "$GUARD" = true ]; then
             set +e
             output=$("${replay[@]}" 2>&1)
@@ -111,7 +136,7 @@ jobs:
           fi
           "${replay[@]}"
       - name: Save reusable build caches
-        if: ${{ steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
+        if: ${{ always() && steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: |
