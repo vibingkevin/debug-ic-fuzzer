@@ -31,40 +31,79 @@ jobs:
       matrix:
         include:
           - start_at: 0
-          - start_at: 10
+            commit_count: 20
           - start_at: 20
-          - start_at: 30
+            commit_count: 20
           - start_at: 40
-          - start_at: 50
+            commit_count: 20
           - start_at: 60
-          - start_at: 70
+            commit_count: 20
           - start_at: 80
-          - start_at: 90
-          - start_at: 100
+            commit_count: 15
+          - start_at: 95
+            commit_count: 15
           - start_at: 110
-          - start_at: 120
-          - start_at: 130
+            commit_count: 15
+          - start_at: 125
+            commit_count: 15
           - start_at: 140
-          - start_at: 150
-          - start_at: 160
+            commit_count: 15
+          - start_at: 155
+            commit_count: 15
           - start_at: 170
+            commit_count: 5
+          - start_at: 175
+            commit_count: 5
           - start_at: 180
+            commit_count: 5
+          - start_at: 185
+            commit_count: 5
           - start_at: 190
+            commit_count: 5
+          - start_at: 195
+            commit_count: 5
           - start_at: 200
+            commit_count: 5
+          - start_at: 205
+            commit_count: 5
           - start_at: 210
+            commit_count: 5
+          - start_at: 215
+            commit_count: 5
           - start_at: 220
+            commit_count: 5
+          - start_at: 225
+            commit_count: 5
           - start_at: 230
+            commit_count: 5
+          - start_at: 235
+            commit_count: 5
           - start_at: 240
+            commit_count: 5
+          - start_at: 245
+            commit_count: 5
           - start_at: 250
+            commit_count: 5
+          - start_at: 255
+            commit_count: 5
           - start_at: 260
+            commit_count: 5
+          - start_at: 265
+            commit_count: 5
           - start_at: 270
+            commit_count: 5
+          - start_at: 275
+            commit_count: 5
           - start_at: 280
-          - start_at: 290
+            commit_count: 5
+          - start_at: 285
+            commit_count: 5
             guard: true
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
       PYTHONDONTWRITEBYTECODE: '1'
       START_AT: ${{ matrix.start_at }}
+      COMMIT_COUNT: ${{ matrix.commit_count }}
       GUARD: ${{ matrix.guard || false }}
     steps:
       - uses: actions/checkout@v6
@@ -120,7 +159,7 @@ jobs:
         shell: bash
         run: |
           export JDK_JBR="$JAVA_HOME"
-          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/animeko-openani.yaml --start-at "$START_AT" --commit-count 10)
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/animeko-openani.yaml --start-at "$START_AT" --commit-count "$COMMIT_COUNT")
           if [ "$GUARD" = true ]; then
             set +e
             output=$("${replay[@]}" 2>&1)
