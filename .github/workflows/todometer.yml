@@ -1,0 +1,131 @@
+name: Todometer-KMP
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/todometer.yml'
+      - 'configs/todometer.yaml'
+      - 'configs/todometer-legacy.yaml'
+      - 'configs/todometer-ksp.init.gradle'
+      - 'configs/compilers-2.4.21-9267.yaml'
+  workflow_dispatch:
+    inputs:
+      scheduled:
+        description: Triggered by replay rotation
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / Todometer-KMP
+
+concurrency:
+  group: todometer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    name: ${{ matrix.project }}-${{ matrix.start_at }}${{ matrix.guard && '-guard' || '' }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { project: todometer-legacy, start_at: 0 }
+          - { project: todometer-legacy, start_at: 25 }
+          - { project: todometer-legacy, start_at: 50, guard: true }
+          - { project: todometer, start_at: 0 }
+          - { project: todometer, start_at: 25 }
+          - { project: todometer, start_at: 50 }
+          - { project: todometer, start_at: 75 }
+          - { project: todometer, start_at: 100 }
+          - { project: todometer, start_at: 125 }
+          - { project: todometer, start_at: 150, guard: true }
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PROJECT: ${{ matrix.project }}
+      START_AT: ${{ matrix.start_at }}
+      GUARD: ${{ matrix.guard || false }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v5
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Install Python dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -e .
+      - name: Download fixed compiler
+        if: ${{ !matrix.guard }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive=kotlin-native-prebuilt-macos-aarch64-2.4.21-9267.tar.gz
+          gh release download compiler-2.4.21-9267 --repo vibingkevin/debug-ic-fuzzer --pattern "$archive" --dir compilers --clobber
+          printf '%s  %s\n' c59d73272d932b865f48d8187e6cca40694dfdbd30e46a776056680fd339bf2e "compilers/$archive" | shasum -a 256 -c -
+      - name: Restore reusable build caches
+        id: build-cache
+        if: ${{ !matrix.guard }}
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            .gradle-home/caches
+            .gradle-home/wrapper/dists
+            .konan/dependencies
+            !.gradle-home/caches/**/.auto-cache/**
+            !.gradle-home/caches/**/kotlin-native-ic-cache/**
+            !.gradle-home/caches/**/*.lock
+          key: todometer-dependencies-v1-${{ matrix.project }}-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/todometer*.yaml', 'configs/todometer-ksp.init.gradle') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            todometer-dependencies-v1-${{ matrix.project }}-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/todometer*.yaml', 'configs/todometer-ksp.init.gradle') }}-
+            todometer-dependencies-v1-${{ matrix.project }}-
+      - name: Replay page
+        shell: bash
+        run: |
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project "configs/$PROJECT.yaml" --start-at "$START_AT" --commit-count 25)
+          if [ "$GUARD" = true ]; then
+            set +e
+            output=$("${replay[@]}" 2>&1)
+            result=$?
+            set -e
+            printf '%s\n' "$output"
+            if [ "$result" -eq 2 ] && grep -Eq "^--start-at $START_AT is outside the [0-9]+-commit range$" <<< "$output"; then
+              echo 'Guard page is empty as expected.'
+              exit 0
+            fi
+            echo '::error::Guard page did not report an empty range. Check the log; if it contains commits, extend the matrix and move the guard.'
+            exit 1
+          fi
+          "${replay[@]}"
+      - name: Save reusable build caches
+        if: ${{ always() && steps.build-cache.outputs.cache-primary-key != '' && steps.build-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            .gradle-home/caches
+            .gradle-home/wrapper/dists
+            .konan/dependencies
+            !.gradle-home/caches/**/.auto-cache/**
+            !.gradle-home/caches/**/kotlin-native-ic-cache/**
+            !.gradle-home/caches/**/*.lock
+          key: ${{ steps.build-cache.outputs.cache-primary-key }}
+      - name: Upload replay results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.project }}-${{ matrix.start_at }}
+          retention-days: 8
+          path: |
+            run/*/*.json
+            run/*/*.csv
+            run/*/*.log
+            run/*/store/**

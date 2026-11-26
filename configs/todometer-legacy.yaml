@@ -1,0 +1,8 @@
+repository: "https://github.com/serbelga/Todometer-KMP.git"
+branch: "main"
+# The parent (1ae12a2a) imports NavigationNode from the old Fonament package.
+start_commit: "d3bb6faadae52e9799168fd275014dc166efbe94"
+# The next commit moved the iOS framework from :app to :app:shared.
+end_commit: "30d05dd21d616c60e3dffe2dd2846eb46c957e75"
+direction: forward
+task: ":app:linkDebugFrameworkIosArm64"
