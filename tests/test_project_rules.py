@@ -38,3 +38,27 @@ def test_nytimes_project_rules():
     assert '"$PROJECT"' in replay
     assert "--start-at" not in replay
     assert "--commit-count" not in replay
+
+
+def test_feed_flow_project_rules():
+    workflow_path = ".github/workflows/feed-flow.yml"
+    project_path = "configs/feed-flow.yaml"
+    workflow = yaml.safe_load((ROOT / workflow_path).read_text())
+    project = yaml.safe_load((ROOT / project_path).read_text())
+    paths = workflow[True]["pull_request"]["paths"]
+    for dependency in (workflow_path, project_path, "configs/compilers-2.4.21-9267.yaml"):
+        assert dependency in paths
+    for index, arg in enumerate(project["gradle_args"]):
+        if arg == "-I":
+            script = project["gradle_args"][index + 1].replace("{config_dir}/", "configs/")
+            assert (ROOT / script).is_file()
+            assert script in paths
+    assert project["task"] == ":shared:linkDebugFrameworkIosArm64"
+    assert project["end_commit"] == "latest"
+    job = workflow["jobs"]["replay"]
+    matrix = job["strategy"]["matrix"]["include"]
+    start_at = [page["start_at"] for page in matrix]
+    assert start_at == list(range(0, 900, 50)) + [935]
+    assert [page for page in matrix if page.get("guard")] == [{"start_at": 935, "guard": True}]
+    replay = next(step["run"] for step in job["steps"] if step.get("name") == "Replay page")
+    assert "--commit-count 50" in replay

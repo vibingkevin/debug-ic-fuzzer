@@ -1,0 +1,11 @@
+// FeedFlow's rssparser 6.1.6 artifacts were removed from Maven Central; older commits pin it.
+gradle.afterProject { project ->
+    ['iosArm64CompileKlibraries', 'debugFrameworkIosArm64CompileKlibraries', 'iosArm64MainImplementation'].each { name ->
+        def configuration = project.configurations.findByName(name)
+        if (configuration != null) {
+            configuration.resolutionStrategy.eachDependency { details ->
+                if (details.requested.group == 'com.prof18.rssparser') details.useVersion('6.1.7')
+            }
+        }
+    }
+}

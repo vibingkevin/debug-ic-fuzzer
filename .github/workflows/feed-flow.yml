@@ -1,7 +1,20 @@
 name: FeedFlow
+run-name: ${{ inputs.scheduled && 'rotation' || github.event_name }} / FeedFlow
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/feed-flow.yml'
+      - 'configs/feed-flow.yaml'
+      - 'configs/feed-flow-skie.init.gradle'
+      - 'configs/feed-flow-rss-parser.init.gradle'
+      - 'configs/compilers-2.4.21-9267.yaml'
   workflow_dispatch:
+    inputs:
+      scheduled:
+        description: Triggered by replay rotation
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,18 +32,24 @@ jobs:
       matrix:
         include:
           - start_at: 0
+          - start_at: 50
           - start_at: 100
+          - start_at: 150
           - start_at: 200
+          - start_at: 250
           - start_at: 300
+          - start_at: 350
           - start_at: 400
+          - start_at: 450
           - start_at: 500
+          - start_at: 550
           - start_at: 600
+          - start_at: 650
           - start_at: 700
+          - start_at: 750
           - start_at: 800
-          - start_at: 900
-          - start_at: 1000
-          - start_at: 1100
-          - start_at: 1200
+          - start_at: 850
+          - start_at: 935
             guard: true
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
@@ -111,14 +130,13 @@ jobs:
             !.gradle-home/caches/**/.auto-cache/**
             !.gradle-home/caches/**/kotlin-native-ic-cache/**
             !.gradle-home/caches/**/*.lock
-          key: feed-flow-dependencies-v2-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/feed-flow.yaml', 'configs/feed-flow-skie.init.gradle') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ic-dependencies-v3-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/feed-flow.yaml') }}
           restore-keys: |
-            feed-flow-dependencies-v2-macos-arm64-${{ hashFiles('configs/compilers-2.4.21-9267.yaml', 'configs/feed-flow.yaml', 'configs/feed-flow-skie.init.gradle') }}-
-            feed-flow-dependencies-v2-macos-arm64-
+            ic-dependencies-v3-macos-arm64-
       - name: Replay page
         shell: bash
         run: |
-          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/feed-flow.yaml --start-at "$START_AT" --commit-count 100)
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/feed-flow.yaml --start-at "$START_AT" --commit-count 50)
           if [ "$GUARD" = true ]; then
             set +e
             output=$("${replay[@]}" 2>&1)
