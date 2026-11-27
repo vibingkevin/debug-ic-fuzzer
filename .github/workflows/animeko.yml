@@ -31,29 +31,41 @@ jobs:
       matrix:
         include:
           - start_at: 0
-            commit_count: 20
+            commit_count: 10
+          - start_at: 10
+            commit_count: 10
           - start_at: 20
-            commit_count: 20
+            commit_count: 10
+          - start_at: 30
+            commit_count: 10
           - start_at: 40
-            commit_count: 20
+            commit_count: 10
+          - start_at: 50
+            commit_count: 10
           - start_at: 60
-            commit_count: 20
+            commit_count: 10
+          - start_at: 70
+            commit_count: 10
           - start_at: 80
-            commit_count: 15
-          - start_at: 95
-            commit_count: 15
+            commit_count: 10
+          - start_at: 90
+            commit_count: 10
+          - start_at: 100
+            commit_count: 10
           - start_at: 110
-            commit_count: 15
-          - start_at: 125
-            commit_count: 15
+            commit_count: 10
+          - start_at: 120
+            commit_count: 10
+          - start_at: 130
+            commit_count: 10
           - start_at: 140
-            commit_count: 15
-          - start_at: 155
-            commit_count: 15
+            commit_count: 10
+          - start_at: 150
+            commit_count: 10
+          - start_at: 160
+            commit_count: 10
           - start_at: 170
-            commit_count: 5
-          - start_at: 175
-            commit_count: 5
+            commit_count: 10
           - start_at: 180
             commit_count: 5
           - start_at: 185
@@ -91,9 +103,7 @@ jobs:
           - start_at: 265
             commit_count: 5
           - start_at: 270
-            commit_count: 5
-          - start_at: 275
-            commit_count: 5
+            commit_count: 10
           - start_at: 280
             commit_count: 5
           - start_at: 285
