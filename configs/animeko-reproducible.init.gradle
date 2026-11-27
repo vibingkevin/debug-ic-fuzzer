@@ -1,7 +1,11 @@
+// Animeko only exposes iOS frameworks through CocoaPods. The application framework
+// also declares the onnxruntime pod, whose archive host no longer matches its
+// certificate, so pod install cannot complete for that module. :app:shared builds the
+// same kind of iOS device framework with only the Sentry pod, so replay that framework.
 // workaround for stablizing 2 ld-prime issues. See issues/smallstub/ and issues/chkstk/.
 gradle.projectsEvaluated {
     if (gradle.parent != null) return
-    def task = gradle.rootProject.tasks.getByPath(':app:shared:application:linkPodDebugFrameworkIosArm64')
+    def task = gradle.rootProject.tasks.getByPath(':app:shared:linkPodDebugFrameworkIosArm64')
     task.toolOptions.freeCompilerArgs.addAll([
         '-Xoverride-konan-properties=linkerKonanFlags.ios_arm64=-lc++ -lobjc -framework Foundation -framework UIKit',
         '-linker-option', '-lSystem',
