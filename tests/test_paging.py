@@ -117,8 +117,9 @@ def test_confetti_guard_accepts_only_empty_page(tmp_path, guard, status, message
     """Execute the actual workflow shell against explicit CLI outcomes."""
     workflow = yaml.safe_load((Path(__file__).resolve().parents[1] / ".github/workflows/confetti.yml").read_text())
     entries = workflow["jobs"]["replay"]["strategy"]["matrix"]["include"]
-    assert [entry["start_at"] for entry in entries if not entry.get("guard")] == list(range(0, 400, 100))
-    assert entries[-1] == dict(start_at=400, guard=True)
+    assert [(entry["start_at"], entry["commit_count"]) for entry in entries if not entry.get("guard")] == [(0, 100), (100, 100), (200, 50), (250, 50), (300, 100)]
+    assert entries[-1]["start_at"] == 400
+    assert entries[-1].get("guard") is True
     script = next(step["run"] for step in workflow["jobs"]["replay"]["steps"] if step.get("name") == "Replay page")
     python = tmp_path / ".venv/bin/python"
     python.parent.mkdir(parents=True)
