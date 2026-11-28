@@ -111,11 +111,13 @@ jobs:
             exit 1
           fi
           swift_bin_dir="$(dirname "$swiftc_path")"
-          # Kotlin/Native takes every Apple tool from the selected toolchain, so give the snapshot the Xcode binaries it lacks.
+          # Kotlin/Native takes every Apple tool from the selected toolchain, so forward the missing ones to Xcode. A copied
+          # Xcode binary aborts because it loads libraries relative to its own toolchain, so forward instead of copying.
           xcode_bin_dir="$(dirname "$(xcrun --no-cache --toolchain XcodeDefault --find ld)")"
           for tool in ld libtool dsymutil strip ar ranlib nm otool install_name_tool lipo; do
             if [ -e "$xcode_bin_dir/$tool" ] && [ ! -e "$swift_bin_dir/$tool" ]; then
-              sudo cp "$xcode_bin_dir/$tool" "$swift_bin_dir/$tool"
+              printf '#!/bin/sh\nexec "%s" "$@"\n' "$xcode_bin_dir/$tool" > /tmp/tool-forward
+              sudo install -m 755 /tmp/tool-forward "$swift_bin_dir/$tool"
             fi
           done
           echo "TOOLCHAINS=$toolchain_id" >> "$GITHUB_ENV"
@@ -126,6 +128,7 @@ jobs:
           }
           test "$(xcrun --no-cache --toolchain "$toolchain_id" --find ld)" = "$swift_bin_dir/ld"
           test -x "$swift_bin_dir/libtool"
+          "$swift_bin_dir/strip" -S -o /dev/null /bin/ls
           xcrun --no-cache --toolchain "$toolchain_id" --find swiftc
           xcrun --no-cache --toolchain "$toolchain_id" --find ld
           xcrun --no-cache --toolchain "$toolchain_id" swiftc --version
