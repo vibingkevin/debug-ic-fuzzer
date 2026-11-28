@@ -1,6 +1,6 @@
 repository: "https://github.com/prof18/feed-flow.git"
 branch: "main"
-start_commit: "9eb780dd206f9fcfca308efbbdbe293f9ebd883e"
+start_commit: "0efcdd91abcd8caf1309e580fa3cf28e4c7c4fc0"
 end_commit: "latest"
 direction: forward
 task: ":shared:linkDebugFrameworkIosArm64"

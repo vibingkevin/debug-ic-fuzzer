@@ -58,7 +58,7 @@ def test_feed_flow_project_rules():
     job = workflow["jobs"]["replay"]
     matrix = job["strategy"]["matrix"]["include"]
     start_at = [page["start_at"] for page in matrix]
-    assert start_at == list(range(0, 900, 50)) + [935]
-    assert [page for page in matrix if page.get("guard")] == [{"start_at": 935, "guard": True}]
+    assert start_at == list(range(0, 350, 25)) + [350]
+    assert [page for page in matrix if page.get("guard")] == [{"start_at": 350, "guard": True}]
     replay = next(step["run"] for step in job["steps"] if step.get("name") == "Replay page")
-    assert "--commit-count 50" in replay
+    assert "--commit-count 25" in replay

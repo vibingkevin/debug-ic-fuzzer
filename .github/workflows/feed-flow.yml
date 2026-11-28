@@ -32,24 +32,20 @@ jobs:
       matrix:
         include:
           - start_at: 0
+          - start_at: 25
           - start_at: 50
+          - start_at: 75
           - start_at: 100
+          - start_at: 125
           - start_at: 150
+          - start_at: 175
           - start_at: 200
+          - start_at: 225
           - start_at: 250
+          - start_at: 275
           - start_at: 300
+          - start_at: 325
           - start_at: 350
-          - start_at: 400
-          - start_at: 450
-          - start_at: 500
-          - start_at: 550
-          - start_at: 600
-          - start_at: 650
-          - start_at: 700
-          - start_at: 750
-          - start_at: 800
-          - start_at: 850
-          - start_at: 935
             guard: true
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
@@ -103,10 +99,17 @@ jobs:
         run: |
           toolchain_id=org.swift.65202611011a
           package=.cache/feed-flow/swift/swift-DEVELOPMENT-SNAPSHOT-2026-11-01-a-osx.pkg
-          if ! xcrun --no-cache --toolchain "$toolchain_id" --find swiftc >/dev/null 2>&1; then
+          # xcrun answers with XcodeDefault instead of failing when the requested toolchain is missing, so check the path it returns.
+          expected_swiftc="/$toolchain_id.xctoolchain/usr/bin/swiftc"
+          swiftc_path="$(xcrun --no-cache --toolchain "$toolchain_id" --find swiftc 2>/dev/null || true)"
+          if [[ "$swiftc_path" != *"$expected_swiftc" ]]; then
             sudo installer -pkg "$package" -target /
+            swiftc_path="$(xcrun --no-cache --toolchain "$toolchain_id" --find swiftc 2>/dev/null || true)"
           fi
-          swiftc_path="$(xcrun --no-cache --toolchain "$toolchain_id" --find swiftc)"
+          if [[ "$swiftc_path" != *"$expected_swiftc" ]]; then
+            echo "::error::Swift snapshot toolchain $toolchain_id is unavailable; xcrun resolved ${swiftc_path:-no swiftc} after installing $package"
+            exit 1
+          fi
           swift_bin_dir="$(dirname "$swiftc_path")"
           default_ld="$(xcrun --no-cache --toolchain XcodeDefault --find ld)"
           if [ "$default_ld" != "$swift_bin_dir/ld" ]; then
@@ -114,6 +117,10 @@ jobs:
           fi
           echo "TOOLCHAINS=$toolchain_id" >> "$GITHUB_ENV"
           echo "PATH=$swift_bin_dir:$PATH" >> "$GITHUB_ENV"
+          "$swift_bin_dir/swiftc" -frontend -help-hidden 2>&1 | grep -q -- '-prefix-map-sourceinfo' || {
+            echo '::error::The installed Swift toolchain rejects -prefix-map-sourceinfo, which configs/feed-flow-skie.init.gradle passes to SKIE.'
+            exit 1
+          }
           test "$(xcrun --no-cache --toolchain "$toolchain_id" --find ld)" = "$swift_bin_dir/ld"
           xcrun --no-cache --toolchain "$toolchain_id" --find swiftc
           xcrun --no-cache --toolchain "$toolchain_id" --find ld
@@ -136,7 +143,7 @@ jobs:
       - name: Replay page
         shell: bash
         run: |
-          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/feed-flow.yaml --start-at "$START_AT" --commit-count 50)
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/feed-flow.yaml --start-at "$START_AT" --commit-count 25)
           if [ "$GUARD" = true ]; then
             set +e
             output=$("${replay[@]}" 2>&1)
