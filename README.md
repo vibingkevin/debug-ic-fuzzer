@@ -70,13 +70,22 @@ Paging applies after selecting the YAML range and its `direction`. With no pagin
 
 Use `gradle_args` for project properties and extra init scripts. `{config_dir}` expands to the project YAML’s directory, so an init-script argument can be written as `{config_dir}/project.init.gradle`.
 
-The [FeedFlow configuration](configs/feed-flow.yaml) starts at the first Kotlin 2.4 commit and overrides older SKIE releases with 0.10.16 for Kotlin 2.4.21 compatibility. It requires a Swift toolchain with `-prefix-map-sourceinfo`, which zeros source-info timestamps, and disables Clang module breadcrumbs in static Swift objects. Apple Swift 6.3.1 and 6.3.2 do not support the source-info flag; the official [2026-11-01 Swift development snapshot](https://www.swift.org/install/macos/) does. The comparison rules remain unchanged.
+The [FeedFlow configuration](configs/feed-flow.yaml) starts at `0efcdd91`. Older first-parent commits run a shared `build-logic/convention` build whose own Kotlin compiler plugins do not resolve with Kotlin 2.4.21, so they cannot build on a clean runner. It overrides older SKIE releases with 0.10.16 for Kotlin 2.4.21 compatibility. Its `feed-flow-rss-parser.init.gradle` pins rssparser to 6.1.7, because the 6.1.5 and 6.1.6 artifacts this range references were removed from Maven Central. It requires a Swift toolchain with `-prefix-map-sourceinfo`, which zeros source-info timestamps, and disables Clang module breadcrumbs in static Swift objects. Apple Swift 6.3.1 and 6.3.2 do not support the source-info flag; the official [2026-11-01 Swift development snapshot](https://www.swift.org/install/macos/) does. Pages replay 175 commits. Measured pages spend between 0.45 and 1.72 minutes per commit on rebuilt pairs plus about twelve minutes of job setup, so 175 commits stays inside the six-hour job limit at the slowest observed rate while keeping each job long enough to exercise incremental compilation across many commits.
 
-Install the snapshot as a dedicated writable toolchain alongside Xcode. Kotlin/Native finds SKIE's Swift compiler relative to the linker returned by `xcrun --find ld`, so selecting Swift alone is insufficient. Copy Xcode's linker into the dedicated toolchain (a symlink resolves back to Xcode), then verify both selected paths before replaying:
+`xcrun --toolchain <id> --find swiftc` answers with Xcode's own `swiftc` instead of failing when the requested toolchain is missing, so an install guarded by that command's status never runs. Check that the printed path is outside `XcodeDefault.xctoolchain` and install the package when it is not, or every Swift invocation silently falls back to Xcode's Swift, which rejects `-prefix-map-sourceinfo`.
+
+Install the snapshot as a dedicated writable toolchain alongside Xcode. Kotlin/Native finds SKIE's Swift compiler relative to the linker returned by `xcrun --find ld`, so selecting Swift alone is insufficient. Kotlin/Native also takes `libtool`, `dsymutil`, `strip`, `ar`, `ranlib`, `nm`, `otool`, `install_name_tool` and `lipo` from the selected toolchain, and the snapshot ships none of them. Copying an Xcode binary there is not enough either: it aborts with `SIGABRT` because it loads libraries relative to its own toolchain, so add a small executable that forwards to the Xcode tool instead. Then verify the selected paths before replaying:
 
 ```sh
 swift_toolchain_bin="$(dirname "$(xcrun --toolchain org.swift.65202611011a --find swiftc)")"
-cp -n "$(xcrun --toolchain XcodeDefault --find ld)" "$swift_toolchain_bin/ld"
+xcode_bin="$(dirname "$(xcrun --toolchain XcodeDefault --find ld)")"
+for tool in ld libtool dsymutil strip ar ranlib nm otool install_name_tool lipo; do
+  if [ -e "$xcode_bin/$tool" ] && [ ! -e "$swift_toolchain_bin/$tool" ]; then
+    printf '#!/bin/sh\nexec "%s" "$@"\n' "$xcode_bin/$tool" | sudo tee "$swift_toolchain_bin/$tool" >/dev/null
+    sudo chmod +x "$swift_toolchain_bin/$tool"
+  fi
+done
+"$swift_toolchain_bin/strip" -S -o /dev/null /bin/ls
 TOOLCHAINS=org.swift.65202611011a xcrun --find ld
 TOOLCHAINS=org.swift.65202611011a xcrun swiftc --version
 TOOLCHAINS=org.swift.65202611011a .venv/bin/debug-ic-fuzzer --compilers configs/compilers-2.4.21.yaml --project configs/feed-flow.yaml

@@ -1,9 +1,11 @@
 repository: "https://github.com/prof18/feed-flow.git"
 branch: "main"
-start_commit: "98c0c7f7ba8dac0b16a5eaa98141d6f06d18727b"
+start_commit: "0efcdd91abcd8caf1309e580fa3cf28e4c7c4fc0"
 end_commit: "latest"
 direction: forward
 task: ":shared:linkDebugFrameworkIosArm64"
 gradle_args:
   - "-I"
   - "{config_dir}/feed-flow-skie.init.gradle"
+  - "-I"
+  - "{config_dir}/feed-flow-rss-parser.init.gradle"
