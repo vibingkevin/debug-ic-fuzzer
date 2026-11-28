@@ -32,15 +32,8 @@ jobs:
       matrix:
         include:
           - start_at: 0
-          - start_at: 40
-          - start_at: 80
-          - start_at: 120
-          - start_at: 160
-          - start_at: 200
-          - start_at: 240
-          - start_at: 280
-          - start_at: 320
-          - start_at: 360
+          - start_at: 175
+          - start_at: 350
             guard: true
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
@@ -145,7 +138,7 @@ jobs:
       - name: Replay page
         shell: bash
         run: |
-          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/feed-flow.yaml --start-at "$START_AT" --commit-count 40)
+          replay=(.venv/bin/python -u debug_ic_fuzzer.py --compilers configs/compilers-2.4.21-9267.yaml --project configs/feed-flow.yaml --start-at "$START_AT" --commit-count 175)
           if [ "$GUARD" = true ]; then
             set +e
             output=$("${replay[@]}" 2>&1)
