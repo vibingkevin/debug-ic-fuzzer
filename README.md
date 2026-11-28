@@ -74,11 +74,14 @@ The [FeedFlow configuration](configs/feed-flow.yaml) starts at `0efcdd91`. Older
 
 `xcrun --toolchain <id> --find swiftc` answers with Xcode's own `swiftc` instead of failing when the requested toolchain is missing, so an install guarded by that command's status never runs. Check that the printed path is outside `XcodeDefault.xctoolchain` and install the package when it is not, or every Swift invocation silently falls back to Xcode's Swift, which rejects `-prefix-map-sourceinfo`.
 
-Install the snapshot as a dedicated writable toolchain alongside Xcode. Kotlin/Native finds SKIE's Swift compiler relative to the linker returned by `xcrun --find ld`, so selecting Swift alone is insufficient. Copy Xcode's linker into the dedicated toolchain (a symlink resolves back to Xcode), then verify both selected paths before replaying:
+Install the snapshot as a dedicated writable toolchain alongside Xcode. Kotlin/Native finds SKIE's Swift compiler relative to the linker returned by `xcrun --find ld`, so selecting Swift alone is insufficient. Kotlin/Native also takes `libtool`, `dsymutil`, `strip`, `ar`, `ranlib`, `nm`, `otool`, `install_name_tool` and `lipo` from the selected toolchain, and the snapshot ships none of them, so copy each missing one from Xcode (a symlink resolves back to Xcode). Then verify the selected paths before replaying:
 
 ```sh
 swift_toolchain_bin="$(dirname "$(xcrun --toolchain org.swift.65202611011a --find swiftc)")"
-cp -n "$(xcrun --toolchain XcodeDefault --find ld)" "$swift_toolchain_bin/ld"
+xcode_bin="$(dirname "$(xcrun --toolchain XcodeDefault --find ld)")"
+for tool in ld libtool dsymutil strip ar ranlib nm otool install_name_tool lipo; do
+  [ -e "$xcode_bin/$tool" ] && cp -n "$xcode_bin/$tool" "$swift_toolchain_bin/$tool"
+done
 TOOLCHAINS=org.swift.65202611011a xcrun --find ld
 TOOLCHAINS=org.swift.65202611011a xcrun swiftc --version
 TOOLCHAINS=org.swift.65202611011a .venv/bin/debug-ic-fuzzer --compilers configs/compilers-2.4.21.yaml --project configs/feed-flow.yaml
