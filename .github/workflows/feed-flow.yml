@@ -99,14 +99,14 @@ jobs:
         run: |
           toolchain_id=org.swift.65202611011a
           package=.cache/feed-flow/swift/swift-DEVELOPMENT-SNAPSHOT-2026-11-01-a-osx.pkg
-          # xcrun answers with XcodeDefault instead of failing when the requested toolchain is missing, so check the path it returns.
-          expected_swiftc="/$toolchain_id.xctoolchain/usr/bin/swiftc"
+          # xcrun answers with Xcode's own toolchain instead of failing when the requested toolchain is missing, so check the path it returns.
+          from_xcode=*/XcodeDefault.xctoolchain/*
           swiftc_path="$(xcrun --no-cache --toolchain "$toolchain_id" --find swiftc 2>/dev/null || true)"
-          if [[ "$swiftc_path" != *"$expected_swiftc" ]]; then
+          if [ -z "$swiftc_path" ] || [[ "$swiftc_path" == $from_xcode ]]; then
             sudo installer -pkg "$package" -target /
             swiftc_path="$(xcrun --no-cache --toolchain "$toolchain_id" --find swiftc 2>/dev/null || true)"
           fi
-          if [[ "$swiftc_path" != *"$expected_swiftc" ]]; then
+          if [ -z "$swiftc_path" ] || [[ "$swiftc_path" == $from_xcode ]]; then
             echo "::error::Swift snapshot toolchain $toolchain_id is unavailable; xcrun resolved ${swiftc_path:-no swiftc} after installing $package"
             exit 1
           fi
